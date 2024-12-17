@@ -1,0 +1,14 @@
+# Source folder path
+REPLACE_THIS_WITH_PATH_OF_SOURCE_FOLDER
+
+# Destination folder path
+REPLACE_THIS_WITH_PATH_OF_DESTINATION_FOLDER
+
+# Network IP address
+REPLACE_THIS_WITH_NETWORK_FOLDER_IP
+
+# Password
+REPLACE_THIS_WITH_PASSWORD
+
+# Selected radio button option, network or local
+network
