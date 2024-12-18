@@ -12,7 +12,12 @@ class FolderCopierApp:
         self.root.title("Folder Copier")  # Setting the title of the window
         self.root.geometry("500x200")  # Set the window size
         self.root.configure(bg="#f0f0f0")  # Set a light background color
-        self.root.iconbitmap('icon.ico')  # Set the window icon (replace with your icon path)
+        
+        # Get the current working directory
+        current_directory = os.path.dirname(os.path.abspath(__file__))
+        # Set the full path to the icon file
+        icon_path = os.path.join(current_directory, 'icon.ico')
+        self.root.iconbitmap(icon_path)  # Set the window icon (replace with your icon path)
 
         # Initializing variables to store paths and settings
         self.source_path = ""  # Path for the source folder
