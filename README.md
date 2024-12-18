@@ -40,15 +40,24 @@ The program automatically loads and saves settings from a settings.txt file, whi
 
 
 ## Example of settings.txt file format:
-'# Source folder path'
+'# Source folder path
+<br>
 /path/to/source/folder
-'# Destination folder path'
+<br>
+'# Destination folder path
+<br>
 /path/to/destination/folder
-'# Network IP address'
+<br>
+'# Network IP address
+<br>
 192.168.1.1
-'# Password'
+<br>
+'# Password
+<br>
 password
-'# Selected radio button option'
+<br>
+'# Selected radio button option
+<br>
 network
 
 
