@@ -32,3 +32,4 @@ venv.bak/
 *.swo
 *~
 *.log
+folder_copier.log
