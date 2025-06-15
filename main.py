@@ -13,26 +13,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTextEdit, QFileDialog, QMessageBox, QDialog,
                              QGroupBox, QGridLayout, QFormLayout, QScrollArea)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
-from PyQt6.QtGui import QFont, QPalette, QColor, QIcon, QPixmap, QPainter
-
-
-def create_emoji_icon(emoji, size=32):
-    """Create a QIcon from an emoji character"""
-    pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.GlobalColor.transparent)
-
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-    # Set font for emoji
-    font = QFont("Segoe UI Emoji", int(size * 0.6))
-    painter.setFont(font)
-
-    # Draw emoji centered
-    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, emoji)
-    painter.end()
-
-    return QIcon(pixmap)
+from PyQt6.QtGui import QFont, QPalette, QColor, QIcon
 
 
 class LogHandler(logging.Handler):
@@ -200,11 +181,7 @@ class CustomMessageBox(QDialog):
     def __init__(self, parent=None, title="", message="", icon_text="", message_type="info"):
         super().__init__(parent)
         self.setWindowTitle(title)
-        # Use the icon_text emoji as window icon
-        if icon_text:
-            self.setWindowIcon(create_emoji_icon(icon_text))
-        else:
-            self.setWindowIcon(QIcon())
+        self.setWindowIcon(QIcon())  # Remove default Windows icon completely
         self.setMinimumSize(350, 150)
         self.setup_ui(message, icon_text, message_type)
         self.apply_styles()
@@ -272,7 +249,7 @@ class PasswordDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("🔒 Authentication Required")
-        self.setWindowIcon(create_emoji_icon("🔒"))  # Use lock emoji as icon
+        self.setWindowIcon(QIcon())  # Remove default Windows icon completely
         self.setFixedSize(350, 200)
         self.setup_ui()
         self.apply_styles()
@@ -349,7 +326,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.app = app_instance
         self.setWindowTitle("⚙️ Settings")
-        self.setWindowIcon(create_emoji_icon("⚙️"))  # Use gear emoji as icon
+        self.setWindowIcon(QIcon())  # Remove default Windows icon completely
         self.setFixedSize(600, 500)
         self.setup_ui()
         self.apply_styles()
@@ -629,7 +606,7 @@ class FolderCopierApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("📁 Folder Copier Pro")
-        self.setWindowIcon(create_emoji_icon("📁"))  # Use folder emoji as icon
+        self.setWindowIcon(QIcon())  # Remove default Windows icon completely
         self.setFixedSize(1000, 1000)
 
         # Initialize variables
