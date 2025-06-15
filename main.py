@@ -780,29 +780,38 @@ class FolderCopierApp(QMainWindow):
         self.network_status_label = QLabel("Checking...")
         self.network_status_label.setFont(QFont("Segoe UI", 10))
 
-        self.refresh_btn = QPushButton("🔄")
-        self.refresh_btn.setFixedSize(40, 30)
+        self.refresh_btn = QPushButton()
+        self.refresh_btn.setIcon(create_black_white_emoji_icon("🍋", 29))
+        self.refresh_btn.setIconSize(QSize(50, 50))
+        self.refresh_btn.setFixedSize(50, 50)
         self.refresh_btn.clicked.connect(self.refresh_network_status)
-        # Make background transparent so emoji is visible
         self.refresh_btn.setStyleSheet("""
             QPushButton {
-                background-color: transparent;
-                border: 2px solid #a8dadc;
-                border-radius: 5px;
-                color: #333333;
-                font-size: 14px;
+                background: none;
+                border: none;
+                color: #000000;
+                font-size: 18px;
+                font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #a8dadc;
-                opacity: 0.8;
+                background-color: rgba(168, 218, 220, 0.3);
+                border-radius: 5px;
+            }
+            QPushButton:pressed {
+                background-color: rgba(168, 218, 220, 0.5);
+                border-radius: 5px;
             }
         """)
 
-        # Only show network elements if network type is selected
-        if self.folder_type == "network":
-            status_layout.addWidget(self.network_label)
-            status_layout.addWidget(self.network_status_label)
-            status_layout.addWidget(self.refresh_btn)
+        # Always add network elements to layout, but control visibility
+        status_layout.addWidget(self.network_label)
+        status_layout.addWidget(self.network_status_label)
+        status_layout.addWidget(self.refresh_btn)
+
+        # Set initial visibility based on folder type
+        self.network_label.setVisible(self.folder_type == "network")
+        self.network_status_label.setVisible(self.folder_type == "network")
+        self.refresh_btn.setVisible(self.folder_type == "network")
 
         info_layout.addLayout(status_layout)
         info_frame.setLayout(info_layout)
