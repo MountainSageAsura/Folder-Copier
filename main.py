@@ -13,7 +13,27 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTextEdit, QFileDialog, QMessageBox, QDialog,
                              QGroupBox, QGridLayout, QFormLayout, QScrollArea)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
-from PyQt6.QtGui import QFont, QPalette, QColor, QIcon
+from PyQt6.QtGui import QFont, QPalette, QColor, QIcon, QPixmap, QPainter
+
+
+def create_black_white_emoji_icon(emoji, size=32):
+    """Create a black and white QIcon from an emoji character"""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    # Set font and color for black and white emoji
+    font = QFont("Segoe UI Emoji", int(size * 0.6))
+    painter.setFont(font)
+    painter.setPen(QColor(0, 0, 0))  # Black color
+
+    # Draw emoji centered in black
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, emoji)
+    painter.end()
+
+    return QIcon(pixmap)
 
 
 class LogHandler(logging.Handler):
@@ -181,7 +201,11 @@ class CustomMessageBox(QDialog):
     def __init__(self, parent=None, title="", message="", icon_text="", message_type="info"):
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.setWindowIcon(QIcon())  # Remove default Windows icon completely
+        # Use black and white emoji icon
+        if icon_text:
+            self.setWindowIcon(create_black_white_emoji_icon(icon_text))
+        else:
+            self.setWindowIcon(QIcon())
         self.setMinimumSize(350, 150)
         self.setup_ui(message, icon_text, message_type)
         self.apply_styles()
@@ -248,8 +272,8 @@ class PasswordDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("🔒 Authentication Required")
-        self.setWindowIcon(QIcon())  # Remove default Windows icon completely
+        self.setWindowTitle("Authentication Required")
+        self.setWindowIcon(create_black_white_emoji_icon("🔒"))  # Black and white lock emoji
         self.setFixedSize(350, 200)
         self.setup_ui()
         self.apply_styles()
@@ -325,8 +349,8 @@ class SettingsDialog(QDialog):
     def __init__(self, app_instance, parent=None):
         super().__init__(parent)
         self.app = app_instance
-        self.setWindowTitle("⚙️ Settings")
-        self.setWindowIcon(QIcon())  # Remove default Windows icon completely
+        self.setWindowTitle("Settings")
+        self.setWindowIcon(create_black_white_emoji_icon("⚙️"))  # Black and white gear emoji
         self.setFixedSize(600, 500)
         self.setup_ui()
         self.apply_styles()
@@ -605,8 +629,8 @@ class FolderCopierApp(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("📁 Folder Copier Pro")
-        self.setWindowIcon(QIcon())  # Remove default Windows icon completely
+        self.setWindowTitle("Folder Copier Pro")
+        self.setWindowIcon(create_black_white_emoji_icon("📁"))  # Black and white folder emoji
         self.setFixedSize(1000, 1000)
 
         # Initialize variables
@@ -948,7 +972,7 @@ class FolderCopierApp(QMainWindow):
                 'password': self.password,
                 'folder_type': self.folder_type,
                 'auto_close': self.auto_close,
-                'version': '2.0',
+                'version': '41',
                 'last_updated': datetime.now().isoformat()
             }
 
@@ -1188,7 +1212,7 @@ def main():
 
     # Set application properties
     app.setApplicationName("Folder Copier Pro")
-    app.setApplicationVersion("2.0")
+    app.setApplicationVersion("41")
     app.setOrganizationName("Folder Copier Pro")
 
     # Create and show main window
