@@ -1,51 +1,21 @@
 """
-Main Window UI for Enhanced Folder Copier
+Main Window Class - Enhanced Folder Copier
+Modern GUI with pastel colors and enhanced functionality
 """
 
 import os
 import logging
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QLabel, QPushButton, QFrame, QGridLayout, QProgressBar,
-                             QMessageBox, QDialog, QSpacerItem, QSizePolicy)
+                            QLabel, QPushButton, QFrame, QGridLayout,
+                            QProgressBar, QMessageBox, QDialog)
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QIcon, QPainter, QPen
+from PyQt6.QtGui import QFont, QIcon, QPixmap
 
-from .settings_dialog import SettingsDialog
-from .password_dialog import PasswordDialog
-from core.copy_worker import CopyWorker
-from core.settings_manager import SettingsManager
-from utils.network_checker import NetworkChecker
-from utils.styles import ModernStyles
-
-
-class StatusIndicator(QWidget):
-    """Custom widget for network status indicator"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(16, 16)
-        self._status = "offline"  # "online", "offline", "checking"
-
-    def set_status(self, status):
-        """Set the status: 'online', 'offline', or 'checking'"""
-        self._status = status
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Set color based on status
-        if self._status == "online":
-            color = Qt.GlobalColor.green
-        elif self._status == "offline":
-            color = Qt.GlobalColor.red
-        else:  # checking
-            color = Qt.GlobalColor.yellow
-
-        painter.setBrush(color)
-        painter.setPen(QPen(Qt.GlobalColor.darkGray, 1))
-        painter.drawEllipse(2, 2, 12, 12)
+from settings_dialog import SettingsDialog
+from password_dialog import PasswordDialog
+from copy_worker import CopyWorker
+from settings_manager import SettingsManager
+from network_checker import NetworkChecker
 
 
 class FolderCopierApp(QMainWindow):
@@ -54,330 +24,365 @@ class FolderCopierApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Enhanced Folder Copier")
-        self.setFixedSize(650, 400)
+        self.setFixedSize(700, 400)
 
-        # Initialize components
+        # Initialize managers
         self.settings_manager = SettingsManager()
         self.network_checker = NetworkChecker()
-        self.copy_worker = None
+
+        # Initialize variables
         self.is_authenticated = False
+        self.copy_worker = None
+        self.network_status_timer = QTimer()
 
         # Load settings
         self.settings = self.settings_manager.load_settings()
 
         self.setup_ui()
-        self.setup_network_timer()
-        self.load_icon()
-
-        # Initial network check
-        self.check_network_status()
+        self.load_initial_data()
+        self.setup_network_monitoring()
 
     def setup_ui(self):
         """Setup the modern user interface"""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Apply modern styles
-        self.setStyleSheet(ModernStyles.get_main_window_style())
-
         main_layout = QVBoxLayout()
         main_layout.setSpacing(20)
         main_layout.setContentsMargins(30, 30, 30, 30)
         central_widget.setLayout(main_layout)
 
-        # Header
-        self.create_header(main_layout)
+        # Header section
+        self.create_header_section(main_layout)
 
-        # Main content area
-        self.create_content_area(main_layout)
+        # Path information section
+        self.create_path_section(main_layout)
+
+        # Status section
+        self.create_status_section(main_layout)
 
         # Progress section
         self.create_progress_section(main_layout)
 
-        # Action buttons
-        self.create_action_buttons(main_layout)
+        # Action buttons section
+        self.create_action_section(main_layout)
 
-        # Update UI with current settings
-        self.update_ui_display()
+        # Footer section
+        self.create_footer_section(main_layout)
 
-    def create_header(self, parent_layout):
-        """Create the header section"""
+    def create_header_section(self, main_layout):
+        """Create header with title and auth status"""
+        header_frame = QFrame()
+        header_frame.setObjectName("headerFrame")
         header_layout = QHBoxLayout()
+        header_frame.setLayout(header_layout)
 
         # Title
-        title_label = QLabel("📁 Enhanced Folder Copier")
-        title_label.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
-        title_label.setStyleSheet("color: #1f2937; margin-bottom: 10px;")
+        title_label = QLabel("Enhanced Folder Copier")
+        title_label.setObjectName("titleLabel")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-        # Logout button (shown only when authenticated)
-        self.logout_btn = QPushButton("🚪 Logout")
-        self.logout_btn.setStyleSheet(ModernStyles.get_logout_button_style())
-        self.logout_btn.clicked.connect(self.logout)
-        self.logout_btn.setVisible(False)
+        # Auth status
+        auth_layout = QVBoxLayout()
+        self.auth_status_label = QLabel("🔒 Not Authenticated")
+        self.auth_status_label.setObjectName("authLabel")
+        self.auth_status_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.logout_button = QPushButton("Logout")
+        self.logout_button.setObjectName("logoutButton")
+        self.logout_button.setVisible(False)
+        self.logout_button.clicked.connect(self.logout)
+
+        auth_layout.addWidget(self.auth_status_label)
+        auth_layout.addWidget(self.logout_button)
 
         header_layout.addWidget(title_label)
         header_layout.addStretch()
-        header_layout.addWidget(self.logout_btn)
+        header_layout.addLayout(auth_layout)
 
-        parent_layout.addLayout(header_layout)
+        main_layout.addWidget(header_frame)
 
-    def create_content_area(self, parent_layout):
-        """Create the main content area"""
-        content_frame = QFrame()
-        content_frame.setStyleSheet(ModernStyles.get_content_frame_style())
-        content_layout = QGridLayout()
-        content_layout.setSpacing(15)
-        content_frame.setLayout(content_layout)
+    def create_path_section(self, main_layout):
+        """Create path information section"""
+        path_frame = QFrame()
+        path_frame.setObjectName("pathFrame")
+        path_layout = QGridLayout()
+        path_layout.setSpacing(15)
+        path_frame.setLayout(path_layout)
 
-        # Source folder info
-        content_layout.addWidget(QLabel("📂 Source Folder:"), 0, 0)
-        self.source_label = QLabel("Not configured")
-        self.source_label.setStyleSheet(ModernStyles.get_path_label_style())
-        content_layout.addWidget(self.source_label, 0, 1, 1, 2)
+        # Source path
+        source_icon = QLabel("📁")
+        source_icon.setObjectName("iconLabel")
+        path_layout.addWidget(source_icon, 0, 0)
+        path_layout.addWidget(QLabel("Source Folder:"), 0, 1)
 
-        # Destination folder info
-        content_layout.addWidget(QLabel("📋 Destination Folder:"), 1, 0)
-        self.destination_label = QLabel("Not configured")
-        self.destination_label.setStyleSheet(ModernStyles.get_path_label_style())
-        content_layout.addWidget(self.destination_label, 1, 1, 1, 2)
+        self.source_label = QLabel("Not selected")
+        self.source_label.setObjectName("pathLabel")
+        path_layout.addWidget(self.source_label, 0, 2)
 
-        # Folder type display
-        content_layout.addWidget(QLabel("📍 Copy Type:"), 2, 0)
-        self.type_label = QLabel("Local")
-        self.type_label.setStyleSheet(ModernStyles.get_info_label_style())
-        content_layout.addWidget(self.type_label, 2, 1, 1, 2)
+        # Destination path
+        dest_icon = QLabel("📤")
+        dest_icon.setObjectName("iconLabel")
+        path_layout.addWidget(dest_icon, 1, 0)
+        path_layout.addWidget(QLabel("Destination:"), 1, 1)
 
-        # Network status (only shown for network type)
-        self.network_status_label = QLabel("🌐 Network Status:")
+        self.destination_label = QLabel("Not selected")
+        self.destination_label.setObjectName("pathLabel")
+        path_layout.addWidget(self.destination_label, 1, 2)
+
+        # Folder type
+        type_icon = QLabel("🌐" if self.settings.get('folder_type') == 'network' else "💻")
+        type_icon.setObjectName("iconLabel")
+        path_layout.addWidget(type_icon, 2, 0)
+        path_layout.addWidget(QLabel("Connection Type:"), 2, 1)
+
+        self.folder_type_label = QLabel(self.settings.get('folder_type', 'local').title())
+        self.folder_type_label.setObjectName("pathLabel")
+        path_layout.addWidget(self.folder_type_label, 2, 2)
+
+        main_layout.addWidget(path_frame)
+
+    def create_status_section(self, main_layout):
+        """Create network status section"""
+        status_frame = QFrame()
+        status_frame.setObjectName("statusFrame")
+        status_layout = QHBoxLayout()
+        status_frame.setLayout(status_layout)
+
+        # Network status (only show if network mode)
         self.network_status_widget = QWidget()
         network_layout = QHBoxLayout()
-        network_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.status_indicator = StatusIndicator()
-        self.network_status_text = QLabel("Checking...")
-        self.refresh_btn = QPushButton("🔄")
-        self.refresh_btn.setFixedSize(30, 30)
-        self.refresh_btn.setStyleSheet(ModernStyles.get_refresh_button_style())
-        self.refresh_btn.clicked.connect(self.check_network_status)
-
-        network_layout.addWidget(self.status_indicator)
-        network_layout.addWidget(self.network_status_text)
-        network_layout.addStretch()
-        network_layout.addWidget(self.refresh_btn)
         self.network_status_widget.setLayout(network_layout)
 
-        content_layout.addWidget(self.network_status_label, 3, 0)
-        content_layout.addWidget(self.network_status_widget, 3, 1, 1, 2)
+        network_layout.addWidget(QLabel("Network Status:"))
+
+        self.network_indicator = QLabel("●")
+        self.network_indicator.setObjectName("networkIndicator")
+        network_layout.addWidget(self.network_indicator)
+
+        self.network_status_label = QLabel("Checking...")
+        network_layout.addWidget(self.network_status_label)
+
+        self.refresh_button = QPushButton("🔄")
+        self.refresh_button.setObjectName("refreshButton")
+        self.refresh_button.setToolTip("Refresh network status")
+        self.refresh_button.clicked.connect(self.check_network_status)
+        network_layout.addWidget(self.refresh_button)
+
+        network_layout.addStretch()
+
+        status_layout.addWidget(self.network_status_widget)
 
         # Auto-close option
-        content_layout.addWidget(QLabel("🔄 Auto Close:"), 4, 0)
-        self.auto_close_label = QLabel("Disabled")
-        self.auto_close_label.setStyleSheet(ModernStyles.get_info_label_style())
-        content_layout.addWidget(self.auto_close_label, 4, 1, 1, 2)
+        self.auto_close_widget = QWidget()
+        auto_close_layout = QHBoxLayout()
+        self.auto_close_widget.setLayout(auto_close_layout)
 
-        parent_layout.addWidget(content_frame)
+        auto_close_layout.addStretch()
+        auto_close_layout.addWidget(QLabel("Auto-close after copy:"))
 
-    def create_progress_section(self, parent_layout):
-        """Create the progress section"""
+        self.auto_close_indicator = QLabel("✅" if self.settings.get('auto_close', False) else "❌")
+        auto_close_layout.addWidget(self.auto_close_indicator)
+
+        status_layout.addWidget(self.auto_close_widget)
+
+        main_layout.addWidget(status_frame)
+
+    def create_progress_section(self, main_layout):
+        """Create progress section"""
         progress_frame = QFrame()
-        progress_frame.setStyleSheet(ModernStyles.get_progress_frame_style())
+        progress_frame.setObjectName("progressFrame")
         progress_layout = QVBoxLayout()
         progress_frame.setLayout(progress_layout)
 
-        # Status label
-        self.status_label = QLabel("Ready to copy")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet("font-size: 14px; color: #374151; font-weight: 500;")
-        progress_layout.addWidget(self.status_label)
-
         # Progress bar
         self.progress_bar = QProgressBar()
-        self.progress_bar.setStyleSheet(ModernStyles.get_progress_bar_style())
+        self.progress_bar.setObjectName("progressBar")
         self.progress_bar.setVisible(False)
-        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
         progress_layout.addWidget(self.progress_bar)
 
-        parent_layout.addWidget(progress_frame)
+        # Status label
+        self.status_label = QLabel("Ready to copy")
+        self.status_label.setObjectName("statusLabel")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        progress_layout.addWidget(self.status_label)
 
-    def create_action_buttons(self, parent_layout):
-        """Create action buttons"""
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(15)
+        main_layout.addWidget(progress_frame)
+
+    def create_action_section(self, main_layout):
+        """Create action buttons section"""
+        action_frame = QFrame()
+        action_frame.setObjectName("actionFrame")
+        action_layout = QHBoxLayout()
+        action_layout.setSpacing(15)
+        action_frame.setLayout(action_layout)
 
         # Copy button
         self.copy_button = QPushButton("🚀 Start Copy")
-        self.copy_button.setStyleSheet(ModernStyles.get_primary_button_style())
+        self.copy_button.setObjectName("copyButton")
         self.copy_button.clicked.connect(self.copy_folder)
 
         # Settings button
         self.settings_button = QPushButton("⚙️ Settings")
-        self.settings_button.setStyleSheet(ModernStyles.get_secondary_button_style())
+        self.settings_button.setObjectName("settingsButton")
         self.settings_button.clicked.connect(self.open_settings)
 
-        button_layout.addWidget(self.copy_button)
-        button_layout.addWidget(self.settings_button)
+        action_layout.addWidget(self.copy_button)
+        action_layout.addWidget(self.settings_button)
 
-        parent_layout.addLayout(button_layout)
+        main_layout.addWidget(action_frame)
 
-    def setup_network_timer(self):
-        """Setup timer for periodic network checks"""
-        self.network_timer = QTimer()
-        self.network_timer.timeout.connect(self.check_network_status)
-        self.network_timer.start(30000)  # Check every 30 seconds
+    def create_footer_section(self, main_layout):
+        """Create footer section"""
+        footer_frame = QFrame()
+        footer_frame.setObjectName("footerFrame")
+        footer_layout = QHBoxLayout()
+        footer_frame.setLayout(footer_layout)
 
-    def update_ui_display(self):
-        """Update UI elements with current settings"""
-        settings = self.settings
+        version_label = QLabel("v3.0")
+        version_label.setObjectName("versionLabel")
 
-        # Update path labels
-        self.source_label.setText(settings.get('source_path', 'Not configured'))
-        self.destination_label.setText(settings.get('destination_path', 'Not configured'))
+        footer_layout.addWidget(version_label)
+        footer_layout.addStretch()
 
-        # Update type label
-        folder_type = settings.get('folder_type', 'local')
-        self.type_label.setText("Network Folder" if folder_type == 'network' else "Local Folder")
+        main_layout.addWidget(footer_frame)
 
-        # Show/hide network status based on type
-        is_network = folder_type == 'network'
-        self.network_status_label.setVisible(is_network)
+    def setup_network_monitoring(self):
+        """Setup network status monitoring"""
+        self.network_status_timer.timeout.connect(self.check_network_status)
+        if self.settings.get('folder_type') == 'network':
+            self.network_status_timer.start(30000)  # Check every 30 seconds
+            self.check_network_status()
+
+    def load_initial_data(self):
+        """Load initial data and update UI"""
+        self.update_ui_labels()
+        self.update_network_visibility()
+
+    def update_ui_labels(self):
+        """Update UI labels with current settings"""
+        self.source_label.setText(self.settings.get('source_path', 'Not selected'))
+        self.destination_label.setText(self.settings.get('destination_path', 'Not selected'))
+        self.folder_type_label.setText(self.settings.get('folder_type', 'local').title())
+        self.auto_close_indicator.setText("✅" if self.settings.get('auto_close', False) else "❌")
+
+    def update_network_visibility(self):
+        """Update network status visibility based on folder type"""
+        is_network = self.settings.get('folder_type') == 'network'
         self.network_status_widget.setVisible(is_network)
 
-        # Update auto-close label
-        auto_close = settings.get('auto_close', False)
-        self.auto_close_label.setText("Enabled" if auto_close else "Disabled")
+        if is_network and not self.network_status_timer.isActive():
+            self.network_status_timer.start(30000)
+            self.check_network_status()
+        elif not is_network and self.network_status_timer.isActive():
+            self.network_status_timer.stop()
 
     def check_network_status(self):
-        """Check network connectivity status"""
-        if self.settings.get('folder_type') != 'network':
-            return
+        """Check network connectivity"""
+        if self.settings.get('folder_type') == 'network':
+            ip = self.settings.get('network_ip', '127.0.0.1')
+            is_connected = self.network_checker.ping_host(ip)
 
-        self.status_indicator.set_status("checking")
-        self.network_status_text.setText("Checking...")
-
-        # Check connectivity
-        network_ip = self.settings.get('network_ip', '127.0.0.1')
-        is_connected = self.network_checker.ping_host(network_ip)
-
-        if is_connected:
-            self.status_indicator.set_status("online")
-            self.network_status_text.setText("Connected")
-        else:
-            self.status_indicator.set_status("offline")
-            self.network_status_text.setText("Disconnected")
+            if is_connected:
+                self.network_indicator.setStyleSheet("color: #90EE90;")  # Light green
+                self.network_status_label.setText(f"Connected to {ip}")
+            else:
+                self.network_indicator.setStyleSheet("color: #FFB6C1;")  # Light red
+                self.network_status_label.setText(f"Cannot reach {ip}")
 
     def copy_folder(self):
         """Start the folder copying process"""
-        # Validate settings
-        if not self.settings.get('source_path') or not self.settings.get('destination_path'):
-            QMessageBox.warning(self, "Configuration Required",
-                                "Please configure source and destination folders in settings.")
-            return
-
-        source_path = self.settings['source_path']
-        destination_path = self.settings['destination_path']
-
         # Validate paths
-        if not os.path.exists(source_path):
-            QMessageBox.critical(self, "Error", f"Source folder does not exist:\n{source_path}")
+        source = self.settings.get('source_path', '')
+        destination = self.settings.get('destination_path', '')
+
+        if not source or not destination:
+            QMessageBox.warning(self, "Missing Paths",
+                              "Please configure source and destination folders in settings.")
             return
 
-        if os.path.abspath(source_path) == os.path.abspath(destination_path):
-            QMessageBox.critical(self, "Error", "Source and destination cannot be the same folder.")
+        if not os.path.exists(source):
+            QMessageBox.critical(self, "Source Not Found",
+                               f"Source folder does not exist:\n{source}")
             return
 
-        # Network check for network folders
+        if os.path.abspath(source) == os.path.abspath(destination):
+            QMessageBox.critical(self, "Invalid Configuration",
+                               "Source and destination cannot be the same folder.")
+            return
+
+        # Network check
         if self.settings.get('folder_type') == 'network':
-            network_ip = self.settings.get('network_ip', '127.0.0.1')
-            if not self.network_checker.ping_host(network_ip):
+            ip = self.settings.get('network_ip', '127.0.0.1')
+            if not self.network_checker.ping_host(ip):
                 QMessageBox.critical(self, "Network Error",
-                                     f"Cannot connect to network location: {network_ip}")
+                                   f"Cannot connect to network location: {ip}")
                 return
 
         # Start copying
-        self.start_copy_operation(source_path, destination_path)
-
-    def start_copy_operation(self, source_path, destination_path):
-        """Start the copy operation in a worker thread"""
-        self.copy_worker = CopyWorker(source_path, destination_path)
+        self.copy_worker = CopyWorker(source, destination)
         self.copy_worker.finished.connect(self.on_copy_finished)
         self.copy_worker.progress_update.connect(self.on_progress_update)
 
-        # Update UI for copying state
+        # Update UI
         self.copy_button.setEnabled(False)
-        self.settings_button.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.status_label.setText("Preparing to copy...")
+        self.status_label.setText("Starting copy operation...")
 
         self.copy_worker.start()
 
     def on_copy_finished(self, success, message):
         """Handle copy operation completion"""
         self.copy_button.setEnabled(True)
-        self.settings_button.setEnabled(True)
         self.progress_bar.setVisible(False)
 
         if success:
-            self.status_label.setText("Copy completed successfully!")
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle("Success")
-            msg_box.setText(message)
-            msg_box.setIcon(QMessageBox.Icon.Information)
-            msg_box.exec()
+            self.status_label.setText("✅ Copy completed successfully!")
+            reply = QMessageBox.information(self, "Success", message)
 
             # Auto-close if enabled
             if self.settings.get('auto_close', False):
                 self.close()
         else:
-            self.status_label.setText("Copy failed")
-            QMessageBox.critical(self, "Copy Error", message)
+            self.status_label.setText("❌ Copy failed")
+            QMessageBox.critical(self, "Copy Failed", message)
 
     def on_progress_update(self, message):
         """Update progress status"""
-        self.status_label.setText(message)
+        self.status_label.setText(f"📋 {message}")
 
     def open_settings(self):
-        """Open settings dialog with authentication if needed"""
+        """Open settings dialog with authentication check"""
         if not self.is_authenticated:
-            if not self.authenticate_user():
+            password_dialog = PasswordDialog(self.settings.get('password', 'password123'), self)
+
+            if password_dialog.exec() == QDialog.DialogCode.Accepted:
+                self.is_authenticated = True
+                self.update_auth_status()
+            else:
                 return
 
+        # Open settings dialog
         settings_dialog = SettingsDialog(self.settings_manager, self)
         if settings_dialog.exec() == QDialog.DialogCode.Accepted:
-            # Reload settings and update UI
             self.settings = self.settings_manager.load_settings()
-            self.update_ui_display()
+            self.update_ui_labels()
+            self.update_network_visibility()
 
-    def authenticate_user(self):
-        """Authenticate user with password"""
-        password_dialog = PasswordDialog(self)
-
-        if password_dialog.exec() == QDialog.DialogCode.Accepted:
-            entered_password = password_dialog.get_password()
-            stored_password = self.settings.get('password', 'password123')
-
-            if entered_password == stored_password:
-                self.is_authenticated = True
-                self.logout_btn.setVisible(True)
-                return True
-            else:
-                QMessageBox.critical(self, "Authentication Failed", "Incorrect password.")
-                return False
-        return False
+    def update_auth_status(self):
+        """Update authentication status in UI"""
+        if self.is_authenticated:
+            self.auth_status_label.setText("🔓 Authenticated")
+            self.logout_button.setVisible(True)
+        else:
+            self.auth_status_label.setText("🔒 Not Authenticated")
+            self.logout_button.setVisible(False)
 
     def logout(self):
         """Logout user"""
         self.is_authenticated = False
-        self.logout_btn.setVisible(False)
-
-    def load_icon(self):
-        """Load application icon if available"""
-        try:
-            current_directory = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            icon_path = os.path.join(current_directory, 'icon.ico')
-            if os.path.exists(icon_path):
-                self.setWindowIcon(QIcon(icon_path))
-        except Exception as e:
-            logging.warning(f"Could not load icon: {str(e)}")
+        self.update_auth_status()
 
     def closeEvent(self, event):
         """Handle application close event"""
@@ -387,11 +392,12 @@ class FolderCopierApp(QMainWindow):
                 self.copy_worker.terminate()
                 self.copy_worker.wait()
 
-            # Stop network timer
-            if hasattr(self, 'network_timer'):
-                self.network_timer.stop()
+            # Stop network monitoring
+            if self.network_status_timer.isActive():
+                self.network_status_timer.stop()
 
             event.accept()
+            logging.info("Application closed successfully")
 
         except Exception as e:
             logging.error(f"Error during application close: {str(e)}")

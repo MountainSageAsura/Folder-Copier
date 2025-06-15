@@ -1,16 +1,14 @@
 """
-Settings Dialog UI for Enhanced Folder Copier
+Settings Dialog - Enhanced Folder Copier
+Modern settings interface with all configuration options
 """
 
 import logging
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
-                             QLabel, QPushButton, QLineEdit, QFileDialog,
-                             QMessageBox, QFrame, QRadioButton, QButtonGroup,
-                             QCheckBox, QTabWidget, QWidget)
+                            QLabel, QPushButton, QLineEdit, QFileDialog,
+                            QMessageBox, QRadioButton, QButtonGroup, QCheckBox,
+                            QFrame, QTabWidget, QWidget)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
-
-from utils.styles import ModernStyles
 
 
 class SettingsDialog(QDialog):
@@ -21,8 +19,8 @@ class SettingsDialog(QDialog):
         self.settings_manager = settings_manager
         self.settings = settings_manager.load_settings()
 
-        self.setWindowTitle("⚙️ Settings")
-        self.setFixedSize(700, 500)
+        self.setWindowTitle("Settings Configuration")
+        self.setFixedSize(800, 600)
         self.setModal(True)
 
         self.setup_ui()
@@ -31,264 +29,218 @@ class SettingsDialog(QDialog):
     def setup_ui(self):
         """Setup the settings UI with tabs"""
         layout = QVBoxLayout()
-        layout.setSpacing(20)
-        layout.setContentsMargins(30, 30, 30, 30)
+        self.setLayout(layout)
 
-        # Apply modern styling
-        self.setStyleSheet(ModernStyles.get_dialog_style())
-
-        # Title
-        title_label = QLabel("Application Settings")
-        title_label.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("color: #1f2937; margin-bottom: 20px;")
-        layout.addWidget(title_label)
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setObjectName("settingsTabWidget")
 
         # Create tabs
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet(ModernStyles.get_tab_style())
-
-        # Folders tab
-        self.create_folders_tab()
-
-        # Network tab
+        self.create_paths_tab()
         self.create_network_tab()
-
-        # General tab
-        self.create_general_tab()
+        self.create_preferences_tab()
+        self.create_security_tab()
 
         layout.addWidget(self.tab_widget)
 
-        # Buttons
-        self.create_buttons(layout)
+        # Action buttons
+        self.create_action_buttons(layout)
 
-        self.setLayout(layout)
+    def create_paths_tab(self):
+        """Create paths configuration tab"""
+        tab = QWidget()
+        tab.setObjectName("pathsTab")
+        layout = QVBoxLayout()
+        tab.setLayout(layout)
 
-    def create_folders_tab(self):
-        """Create folders configuration tab"""
-        folders_widget = QWidget()
-        layout = QGridLayout()
-        layout.setSpacing(20)
-        folders_widget.setLayout(layout)
+        # Paths frame
+        paths_frame = QFrame()
+        paths_frame.setObjectName("pathsFrame")
+        paths_layout = QGridLayout()
+        paths_frame.setLayout(paths_layout)
 
-        # Source folder section
-        source_frame = QFrame()
-        source_frame.setStyleSheet(ModernStyles.get_settings_frame_style())
-        source_layout = QVBoxLayout()
-        source_frame.setLayout(source_layout)
-
-        source_title = QLabel("📂 Source Folder")
-        source_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        source_title.setStyleSheet("color: #374151; margin-bottom: 10px;")
-        source_layout.addWidget(source_title)
-
-        source_path_layout = QHBoxLayout()
+        # Source folder
+        paths_layout.addWidget(QLabel("📁 Source Folder:"), 0, 0)
         self.source_label = QLabel("Not selected")
-        self.source_label.setStyleSheet(ModernStyles.get_path_display_style())
-        self.browse_source_btn = QPushButton("📁 Browse")
-        self.browse_source_btn.setStyleSheet(ModernStyles.get_browse_button_style())
+        self.source_label.setObjectName("pathDisplayLabel")
+        paths_layout.addWidget(self.source_label, 0, 1)
+
+        self.browse_source_btn = QPushButton("Browse")
+        self.browse_source_btn.setObjectName("browseButton")
         self.browse_source_btn.clicked.connect(self.browse_source)
+        paths_layout.addWidget(self.browse_source_btn, 0, 2)
 
-        source_path_layout.addWidget(self.source_label, 1)
-        source_path_layout.addWidget(self.browse_source_btn)
-        source_layout.addLayout(source_path_layout)
-
-        layout.addWidget(source_frame, 0, 0, 1, 2)
-
-        # Destination folder section
-        dest_frame = QFrame()
-        dest_frame.setStyleSheet(ModernStyles.get_settings_frame_style())
-        dest_layout = QVBoxLayout()
-        dest_frame.setLayout(dest_layout)
-
-        dest_title = QLabel("📋 Destination Folder")
-        dest_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        dest_title.setStyleSheet("color: #374151; margin-bottom: 10px;")
-        dest_layout.addWidget(dest_title)
-
-        dest_path_layout = QHBoxLayout()
+        # Destination folder
+        paths_layout.addWidget(QLabel("📤 Destination Folder:"), 1, 0)
         self.destination_label = QLabel("Not selected")
-        self.destination_label.setStyleSheet(ModernStyles.get_path_display_style())
-        self.browse_dest_btn = QPushButton("📁 Browse")
-        self.browse_dest_btn.setStyleSheet(ModernStyles.get_browse_button_style())
+        self.destination_label.setObjectName("pathDisplayLabel")
+        paths_layout.addWidget(self.destination_label, 1, 1)
+
+        self.browse_dest_btn = QPushButton("Browse")
+        self.browse_dest_btn.setObjectName("browseButton")
         self.browse_dest_btn.clicked.connect(self.browse_destination)
+        paths_layout.addWidget(self.browse_dest_btn, 1, 2)
 
-        dest_path_layout.addWidget(self.destination_label, 1)
-        dest_path_layout.addWidget(self.browse_dest_btn)
-        dest_layout.addLayout(dest_path_layout)
+        layout.addWidget(paths_frame)
 
-        layout.addWidget(dest_frame, 1, 0, 1, 2)
-
-        # Folder type section
+        # Connection type frame
         type_frame = QFrame()
-        type_frame.setStyleSheet(ModernStyles.get_settings_frame_style())
+        type_frame.setObjectName("connectionFrame")
         type_layout = QVBoxLayout()
         type_frame.setLayout(type_layout)
 
-        type_title = QLabel("📍 Copy Type")
-        type_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        type_title.setStyleSheet("color: #374151; margin-bottom: 10px;")
-        type_layout.addWidget(type_title)
+        type_layout.addWidget(QLabel("🌐 Connection Type:"))
 
-        type_selection_layout = QHBoxLayout()
         self.folder_type_group = QButtonGroup()
 
-        self.local_radio = QRadioButton("🏠 Local Folder")
+        connection_layout = QHBoxLayout()
+        self.local_radio = QRadioButton("💻 Local Folder")
+        self.local_radio.setObjectName("connectionRadio")
         self.network_radio = QRadioButton("🌐 Network Folder")
-
-        self.local_radio.setStyleSheet(ModernStyles.get_radio_button_style())
-        self.network_radio.setStyleSheet(ModernStyles.get_radio_button_style())
+        self.network_radio.setObjectName("connectionRadio")
 
         self.folder_type_group.addButton(self.local_radio, 0)
         self.folder_type_group.addButton(self.network_radio, 1)
 
-        type_selection_layout.addWidget(self.local_radio)
-        type_selection_layout.addWidget(self.network_radio)
-        type_selection_layout.addStretch()
+        connection_layout.addWidget(self.local_radio)
+        connection_layout.addWidget(self.network_radio)
+        connection_layout.addStretch()
 
-        type_layout.addLayout(type_selection_layout)
+        type_layout.addLayout(connection_layout)
+        layout.addWidget(type_frame)
 
-        layout.addWidget(type_frame, 2, 0, 1, 2)
+        layout.addStretch()
 
-        self.tab_widget.addTab(folders_widget, "📁 Folders")
+        self.tab_widget.addTab(tab, "📁 Paths")
 
     def create_network_tab(self):
         """Create network configuration tab"""
-        network_widget = QWidget()
+        tab = QWidget()
+        tab.setObjectName("networkTab")
         layout = QVBoxLayout()
-        layout.setSpacing(20)
-        network_widget.setLayout(layout)
+        tab.setLayout(layout)
 
-        # Network IP section
-        ip_frame = QFrame()
-        ip_frame.setStyleSheet(ModernStyles.get_settings_frame_style())
-        ip_layout = QVBoxLayout()
-        ip_frame.setLayout(ip_layout)
+        # Network frame
+        network_frame = QFrame()
+        network_frame.setObjectName("networkFrame")
+        network_layout = QGridLayout()
+        network_frame.setLayout(network_layout)
 
-        ip_title = QLabel("🌐 Network Configuration")
-        ip_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        ip_title.setStyleSheet("color: #374151; margin-bottom: 10px;")
-        ip_layout.addWidget(ip_title)
-
-        ip_input_layout = QHBoxLayout()
-        ip_label = QLabel("IP Address:")
-        ip_label.setStyleSheet("color: #6b7280; font-weight: 500;")
+        # Network IP
+        network_layout.addWidget(QLabel("🌐 Network IP Address:"), 0, 0)
         self.network_ip_input = QLineEdit()
-        self.network_ip_input.setPlaceholderText("Enter network IP address (e.g., 192.168.1.100)")
-        self.network_ip_input.setStyleSheet(ModernStyles.get_input_style())
-
-        ip_input_layout.addWidget(ip_label)
-        ip_input_layout.addWidget(self.network_ip_input, 1)
-        ip_layout.addLayout(ip_input_layout)
+        self.network_ip_input.setObjectName("networkInput")
+        self.network_ip_input.setPlaceholderText("Enter IP address (e.g., 192.168.1.100)")
+        network_layout.addWidget(self.network_ip_input, 0, 1)
 
         # Test connection button
-        test_btn_layout = QHBoxLayout()
-        test_btn_layout.addStretch()
-        self.test_connection_btn = QPushButton("🔗 Test Connection")
-        self.test_connection_btn.setStyleSheet(ModernStyles.get_test_button_style())
+        self.test_connection_btn = QPushButton("🔍 Test Connection")
+        self.test_connection_btn.setObjectName("testButton")
         self.test_connection_btn.clicked.connect(self.test_network_connection)
-        test_btn_layout.addWidget(self.test_connection_btn)
-        ip_layout.addLayout(test_btn_layout)
+        network_layout.addWidget(self.test_connection_btn, 0, 2)
 
-        layout.addWidget(ip_frame)
+        # Connection status
+        self.connection_status = QLabel("Connection not tested")
+        self.connection_status.setObjectName("connectionStatus")
+        network_layout.addWidget(self.connection_status, 1, 0, 1, 3)
+
+        layout.addWidget(network_frame)
         layout.addStretch()
 
-        self.tab_widget.addTab(network_widget, "🌐 Network")
+        self.tab_widget.addTab(tab, "🌐 Network")
 
-    def create_general_tab(self):
-        """Create general settings tab"""
-        general_widget = QWidget()
+    def create_preferences_tab(self):
+        """Create preferences tab"""
+        tab = QWidget()
+        tab.setObjectName("preferencesTab")
         layout = QVBoxLayout()
-        layout.setSpacing(20)
-        general_widget.setLayout(layout)
+        tab.setLayout(layout)
 
-        # Security section
+        # Preferences frame
+        prefs_frame = QFrame()
+        prefs_frame.setObjectName("preferencesFrame")
+        prefs_layout = QVBoxLayout()
+        prefs_frame.setLayout(prefs_layout)
+
+        # Auto-close option
+        self.auto_close_checkbox = QCheckBox("🚪 Auto-close application after successful copy")
+        self.auto_close_checkbox.setObjectName("autoCloseCheckbox")
+        prefs_layout.addWidget(self.auto_close_checkbox)
+
+        # Future preferences can be added here
+
+        layout.addWidget(prefs_frame)
+        layout.addStretch()
+
+        self.tab_widget.addTab(tab, "⚙️ Preferences")
+
+    def create_security_tab(self):
+        """Create security configuration tab"""
+        tab = QWidget()
+        tab.setObjectName("securityTab")
+        layout = QVBoxLayout()
+        tab.setLayout(layout)
+
+        # Security frame
         security_frame = QFrame()
-        security_frame.setStyleSheet(ModernStyles.get_settings_frame_style())
-        security_layout = QVBoxLayout()
+        security_frame.setObjectName("securityFrame")
+        security_layout = QGridLayout()
         security_frame.setLayout(security_layout)
 
-        security_title = QLabel("🔒 Security")
-        security_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        security_title.setStyleSheet("color: #374151; margin-bottom: 10px;")
-        security_layout.addWidget(security_title)
-
-        password_layout = QHBoxLayout()
-        password_label = QLabel("New Password:")
-        password_label.setStyleSheet("color: #6b7280; font-weight: 500;")
+        # Password
+        security_layout.addWidget(QLabel("🔒 Settings Password:"), 0, 0)
         self.password_input = QLineEdit()
+        self.password_input.setObjectName("passwordInput")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.setPlaceholderText("Enter new password (leave blank to keep current)")
-        self.password_input.setStyleSheet(ModernStyles.get_input_style())
+        security_layout.addWidget(self.password_input, 0, 1)
 
-        password_layout.addWidget(password_label)
-        password_layout.addWidget(self.password_input, 1)
-        security_layout.addLayout(password_layout)
+        # Password confirmation
+        security_layout.addWidget(QLabel("🔒 Confirm Password:"), 1, 0)
+        self.password_confirm = QLineEdit()
+        self.password_confirm.setObjectName("passwordInput")
+        self.password_confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_confirm.setPlaceholderText("Confirm new password")
+        security_layout.addWidget(self.password_confirm, 1, 1)
 
         layout.addWidget(security_frame)
-
-        # App behavior section
-        behavior_frame = QFrame()
-        behavior_frame.setStyleSheet(ModernStyles.get_settings_frame_style())
-        behavior_layout = QVBoxLayout()
-        behavior_frame.setLayout(behavior_layout)
-
-        behavior_title = QLabel("⚙️ Application Behavior")
-        behavior_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        behavior_title.setStyleSheet("color: #374151; margin-bottom: 10px;")
-        behavior_layout.addWidget(behavior_title)
-
-        self.auto_close_checkbox = QCheckBox("🔄 Auto-close application after successful copy")
-        self.auto_close_checkbox.setStyleSheet(ModernStyles.get_checkbox_style())
-        behavior_layout.addWidget(self.auto_close_checkbox)
-
-        layout.addWidget(behavior_frame)
         layout.addStretch()
 
-        self.tab_widget.addTab(general_widget, "⚙️ General")
+        self.tab_widget.addTab(tab, "🔒 Security")
 
-    def create_buttons(self, parent_layout):
-        """Create dialog buttons"""
+    def create_action_buttons(self, layout):
+        """Create action buttons"""
+        button_frame = QFrame()
+        button_frame.setObjectName("actionButtonFrame")
         button_layout = QHBoxLayout()
-        button_layout.setSpacing(15)
+        button_frame.setLayout(button_layout)
 
-        # Cancel button
-        self.cancel_btn = QPushButton("❌ Cancel")
-        self.cancel_btn.setStyleSheet(ModernStyles.get_cancel_button_style())
-        self.cancel_btn.clicked.connect(self.reject)
-
-        # Save button
         self.save_btn = QPushButton("💾 Save Settings")
-        self.save_btn.setStyleSheet(ModernStyles.get_save_button_style())
+        self.save_btn.setObjectName("saveButton")
         self.save_btn.clicked.connect(self.save_settings)
 
-        button_layout.addStretch()
-        button_layout.addWidget(self.cancel_btn)
-        button_layout.addWidget(self.save_btn)
+        self.cancel_btn = QPushButton("❌ Cancel")
+        self.cancel_btn.setObjectName("cancelButton")
+        self.cancel_btn.clicked.connect(self.reject)
 
-        parent_layout.addLayout(button_layout)
+        button_layout.addStretch()
+        button_layout.addWidget(self.save_btn)
+        button_layout.addWidget(self.cancel_btn)
+
+        layout.addWidget(button_frame)
 
     def load_current_settings(self):
         """Load current settings into the dialog"""
-        # Load folder paths
-        source_path = self.settings.get('source_path', '')
-        dest_path = self.settings.get('destination_path', '')
+        self.source_label.setText(self.settings.get('source_path', 'Not selected'))
+        self.destination_label.setText(self.settings.get('destination_path', 'Not selected'))
+        self.network_ip_input.setText(self.settings.get('network_ip', ''))
+        self.auto_close_checkbox.setChecked(self.settings.get('auto_close', False))
 
-        self.source_label.setText(source_path if source_path else "Not selected")
-        self.destination_label.setText(dest_path if dest_path else "Not selected")
-
-        # Load folder type
-        folder_type = self.settings.get('folder_type', 'local')
-        if folder_type == 'network':
+        # Set folder type
+        if self.settings.get('folder_type', 'local') == 'network':
             self.network_radio.setChecked(True)
         else:
             self.local_radio.setChecked(True)
-
-        # Load network IP
-        self.network_ip_input.setText(self.settings.get('network_ip', '127.0.0.1'))
-
-        # Load auto-close setting
-        self.auto_close_checkbox.setChecked(self.settings.get('auto_close', False))
 
     def browse_source(self):
         """Browse for source folder"""
@@ -304,51 +256,56 @@ class SettingsDialog(QDialog):
 
     def test_network_connection(self):
         """Test network connection"""
-        ip_address = self.network_ip_input.text().strip()
-        if not ip_address:
-            QMessageBox.warning(self, "Input Required", "Please enter an IP address first.")
+        ip = self.network_ip_input.text().strip()
+        if not ip:
+            self.connection_status.setText("❌ Please enter an IP address")
+            self.connection_status.setStyleSheet("color: #FF6B6B;")
             return
 
-        self.test_connection_btn.setText("🔄 Testing...")
-        self.test_connection_btn.setEnabled(False)
-
-        # Import here to avoid circular imports
         from utils.network_checker import NetworkChecker
-        network_checker = NetworkChecker()
+        checker = NetworkChecker()
 
-        try:
-            if network_checker.ping_host(ip_address):
-                QMessageBox.information(self, "Connection Test",
-                                        f"✅ Successfully connected to {ip_address}")
-            else:
-                QMessageBox.warning(self, "Connection Test",
-                                    f"❌ Failed to connect to {ip_address}")
-        finally:
-            self.test_connection_btn.setText("🔗 Test Connection")
-            self.test_connection_btn.setEnabled(True)
+        self.connection_status.setText("🔍 Testing connection...")
+        self.connection_status.setStyleSheet("color: #4ECDC4;")
+
+        # In a real app, this should be done in a separate thread
+        is_connected = checker.ping_host(ip)
+
+        if is_connected:
+            self.connection_status.setText(f"✅ Successfully connected to {ip}")
+            self.connection_status.setStyleSheet("color: #51CF66;")
+        else:
+            self.connection_status.setText(f"❌ Cannot connect to {ip}")
+            self.connection_status.setStyleSheet("color: #FF6B6B;")
 
     def save_settings(self):
         """Save settings and close dialog"""
         try:
-            # Get values from UI
-            source_text = self.source_label.text()
-            dest_text = self.destination_label.text()
+            # Validate passwords if provided
+            new_password = self.password_input.text()
+            confirm_password = self.password_confirm.text()
 
-            # Update settings dictionary
-            updated_settings = self.settings.copy()
-            updated_settings['source_path'] = source_text if source_text != "Not selected" else ""
-            updated_settings['destination_path'] = dest_text if dest_text != "Not selected" else ""
-            updated_settings['network_ip'] = self.network_ip_input.text().strip() or "127.0.0.1"
-            updated_settings['folder_type'] = 'network' if self.network_radio.isChecked() else 'local'
-            updated_settings['auto_close'] = self.auto_close_checkbox.isChecked()
+            if new_password and new_password != confirm_password:
+                QMessageBox.warning(self, "Password Mismatch", "Passwords do not match!")
+                return
+
+            # Prepare settings dictionary
+            settings = {
+                'source_path': self.source_label.text() if self.source_label.text() != "Not selected" else "",
+                'destination_path': self.destination_label.text() if self.destination_label.text() != "Not selected" else "",
+                'network_ip': self.network_ip_input.text().strip() or "127.0.0.1",
+                'folder_type': 'network' if self.network_radio.isChecked() else 'local',
+                'auto_close': self.auto_close_checkbox.isChecked()
+            }
 
             # Update password if provided
-            new_password = self.password_input.text().strip()
             if new_password:
-                updated_settings['password'] = new_password
+                settings['password'] = new_password
+            else:
+                settings['password'] = self.settings.get('password', 'password123')
 
             # Save settings
-            self.settings_manager.save_settings(updated_settings)
+            self.settings_manager.save_settings(settings)
 
             QMessageBox.information(self, "Success", "✅ Settings saved successfully!")
             self.accept()

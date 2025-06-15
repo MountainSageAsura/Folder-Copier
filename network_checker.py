@@ -1,165 +1,117 @@
 """
-Network Connectivity Checker for Enhanced Folder Copier
+Network Checker - Enhanced Folder Copier
+Utilities for checking network connectivity
 """
 
 import subprocess
 import platform
 import socket
 import logging
-from typing import bool
+from typing import Optional
 
 
 class NetworkChecker:
-    """Utility class for checking network connectivity"""
+    """Network connectivity checker with multiple methods"""
 
-    def __init__(self):
-        self.system = platform.system().lower()
+    def __init__(self, timeout: int = 3):
+        self.timeout = timeout
 
-    def ping_host(self, host: str, timeout: int = 3) -> bool:
+    def ping_host(self, host: str) -> bool:
         """
         Ping a host to check connectivity
 
         Args:
             host: IP address or hostname to ping
-            timeout: Timeout in seconds
 
         Returns:
-            True if host is reachable, False otherwise
+            bool: True if host is reachable, False otherwise
         """
         try:
             # Determine ping command based on OS
-            if self.system == "windows":
-                # Windows ping command
-                cmd = ["ping", "-n", "1", "-w", str(timeout * 1000), host]
+            if platform.system().lower() == "windows":
+                cmd = ["ping", "-n", "1", "-w", str(self.timeout * 1000), host]
             else:
-                # Unix/Linux/macOS ping command
-                cmd = ["ping", "-c", "1", "-W", str(timeout), host]
+                cmd = ["ping", "-c", "1", "-W", str(self.timeout), host]
 
             # Execute ping command
             result = subprocess.run(
                 cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=timeout + 2  # Add buffer to subprocess timeout
+                capture_output=True,
+                text=True,
+                timeout=self.timeout + 2
             )
 
-            # Return True if ping was successful (return code 0)
-            is_reachable = result.returncode == 0
+            success = result.returncode == 0
 
-            if is_reachable:
-                logging.debug(f"Successfully pinged {host}")
+            if success:
+                logging.info(f"Successfully pinged {host}")
             else:
-                logging.debug(f"Failed to ping {host}")
+                logging.warning(f"Failed to ping {host}")
 
-            return is_reachable
+            return success
 
         except subprocess.TimeoutExpired:
-            logging.warning(f"Ping to {host} timed out after {timeout} seconds")
+            logging.warning(f"Ping timeout for {host}")
             return False
-
         except FileNotFoundError:
-            # Ping command not found, try alternative method
-            logging.warning("Ping command not found, trying socket connection")
-            return self.check_tcp_connection(host)
-
+            logging.error("Ping command not found")
+            return False
         except Exception as e:
             logging.error(f"Error pinging {host}: {str(e)}")
             return False
 
-    def check_tcp_connection(self, host: str, port: int = 445, timeout: int = 3) -> bool:
+    def check_port(self, host: str, port: int) -> bool:
         """
-        Check TCP connection to a host (useful for SMB/network shares)
+        Check if a specific port is open on a host
 
         Args:
             host: IP address or hostname
-            port: Port to connect to (445 for SMB, 22 for SSH, etc.)
-            timeout: Connection timeout in seconds
+            port: Port number to check
 
         Returns:
-            True if connection successful, False otherwise
+            bool: True if port is open, False otherwise
         """
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(timeout)
+                sock.settimeout(self.timeout)
                 result = sock.connect_ex((host, port))
 
-                is_connected = result == 0
-
-                if is_connected:
-                    logging.debug(f"Successfully connected to {host}:{port}")
+                if result == 0:
+                    logging.info(f"Port {port} is open on {host}")
+                    return True
                 else:
-                    logging.debug(f"Failed to connect to {host}:{port}")
-
-                return is_connected
+                    logging.warning(f"Port {port} is closed on {host}")
+                    return False
 
         except socket.gaierror as e:
             logging.error(f"DNS resolution failed for {host}: {str(e)}")
             return False
-
         except Exception as e:
-            logging.error(f"Error connecting to {host}:{port}: {str(e)}")
+            logging.error(f"Error checking port {port} on {host}: {str(e)}")
             return False
 
-    def check_smb_share(self, host: str, timeout: int = 3) -> bool:
+    def check_smb_share(self, host: str) -> bool:
         """
-        Check if SMB/CIFS share is accessible
+        Check if SMB/CIFS shares are available
 
         Args:
-            host: IP address or hostname of SMB server
-            timeout: Connection timeout in seconds
+            host: IP address or hostname
 
         Returns:
-            True if SMB share is accessible, False otherwise
+            bool: True if SMB is available, False otherwise
         """
-        # Try common SMB ports
-        smb_ports = [445, 139]  # Modern SMB (445) and legacy NetBIOS (139)
+        # Check common SMB ports
+        smb_ports = [445, 139]  # SMB over TCP, NetBIOS
 
         for port in smb_ports:
-            if self.check_tcp_connection(host, port, timeout):
-                logging.debug(f"SMB service detected on {host}:{port}")
+            if self.check_port(host, port):
+                logging.info(f"SMB service detected on {host}:{port}")
                 return True
 
-        logging.debug(f"No SMB service detected on {host}")
+        logging.warning(f"No SMB service detected on {host}")
         return False
 
-    def get_local_ip(self) -> str:
-        """
-        Get the local IP address of this machine
-
-        Returns:
-            Local IP address as string, or '127.0.0.1' if detection fails
-        """
-        try:
-            # Connect to a remote address to determine local IP
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                # Connect to Google's DNS server (doesn't actually send data)
-                sock.connect(("8.8.8.8", 80))
-                local_ip = sock.getsockname()[0]
-
-            logging.debug(f"Detected local IP: {local_ip}")
-            return local_ip
-
-        except Exception as e:
-            logging.warning(f"Failed to detect local IP: {str(e)}")
-            return "127.0.0.1"
-
-    def is_valid_ip(self, ip_address: str) -> bool:
-        """
-        Validate if a string is a valid IP address
-
-        Args:
-            ip_address: String to validate
-
-        Returns:
-            True if valid IP address, False otherwise
-        """
-        try:
-            socket.inet_aton(ip_address)
-            return True
-        except socket.error:
-            return False
-
-    def resolve_hostname(self, hostname: str) -> str:
+    def resolve_hostname(self, hostname: str) -> Optional[str]:
         """
         Resolve hostname to IP address
 
@@ -167,15 +119,74 @@ class NetworkChecker:
             hostname: Hostname to resolve
 
         Returns:
-            IP address string, or empty string if resolution fails
+            str: IP address if successful, None otherwise
         """
         try:
             ip_address = socket.gethostbyname(hostname)
-            logging.debug(f"Resolved {hostname} to {ip_address}")
+            logging.info(f"Resolved {hostname} to {ip_address}")
             return ip_address
-
         except socket.gaierror as e:
             logging.error(f"Failed to resolve {hostname}: {str(e)}")
-            return ""
+            return None
 
-        except Exception as e
+    def comprehensive_check(self, host: str) -> dict:
+        """
+        Perform comprehensive network connectivity check
+
+        Args:
+            host: IP address or hostname
+
+        Returns:
+            dict: Results of various connectivity tests
+        """
+        results = {
+            'host': host,
+            'ping': False,
+            'smb_available': False,
+            'resolved_ip': None,
+            'timestamp': None
+        }
+
+        try:
+            import datetime
+            results['timestamp'] = datetime.datetime.now().isoformat()
+
+            # Try to resolve hostname if not an IP
+            if not self._is_ip_address(host):
+                results['resolved_ip'] = self.resolve_hostname(host)
+                if not results['resolved_ip']:
+                    return results
+
+            # Ping test
+            results['ping'] = self.ping_host(host)
+
+            # SMB check (for network shares)
+            results['smb_available'] = self.check_smb_share(host)
+
+            logging.info(f"Comprehensive check completed for {host}: {results}")
+
+        except Exception as e:
+            logging.error(f"Error in comprehensive check for {host}: {str(e)}")
+
+        return results
+
+    def _is_ip_address(self, address: str) -> bool:
+        """Check if string is a valid IP address"""
+        try:
+            socket.inet_aton(address)
+            return True
+        except socket.error:
+            return False
+
+    def get_local_ip(self) -> Optional[str]:
+        """Get local machine's IP address"""
+        try:
+            # Connect to a remote address to determine local IP
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(("8.8.8.8", 80))
+                local_ip = sock.getsockname()[0]
+                logging.info(f"Local IP address: {local_ip}")
+                return local_ip
+        except Exception as e:
+            logging.error(f"Failed to get local IP: {str(e)}")
+            return None
