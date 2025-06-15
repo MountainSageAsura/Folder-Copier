@@ -442,6 +442,21 @@ class ModernStyles:
         """
 
     @classmethod
+    def get_success_label_style(cls):
+        """Success label styling"""
+        return f"""
+        QLabel {{
+            background-color: {cls.COLORS['success']};
+            border: 1px solid #10b981;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #065f46;
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        """
+
+    @classmethod
     def get_input_frame_style(cls):
         """Input frame styling"""
         return f"""

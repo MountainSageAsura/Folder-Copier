@@ -27,8 +27,6 @@ def setup_application_style(app):
     primary = QColor(147, 197, 253)  # Soft blue
     secondary = QColor(196, 181, 253)  # Soft purple
     accent = QColor(134, 239, 172)  # Soft green
-    warning = QColor(254, 215, 170)  # Soft orange
-    error = QColor(252, 165, 165)  # Soft red
     text_primary = QColor(31, 41, 55)  # Dark gray
     text_secondary = QColor(107, 114, 128)  # Medium gray
 
@@ -42,7 +40,7 @@ def setup_application_style(app):
     palette.setColor(QPalette.ColorRole.Text, text_primary)
     palette.setColor(QPalette.ColorRole.Button, surface)
     palette.setColor(QPalette.ColorRole.ButtonText, text_primary)
-    palette.setColor(QPalette.ColorRole.BrightText, error)
+    palette.setColor(QPalette.ColorRole.BrightText, QColor(252, 165, 165))
     palette.setColor(QPalette.ColorRole.Link, primary)
     palette.setColor(QPalette.ColorRole.Highlight, primary)
     palette.setColor(QPalette.ColorRole.HighlightedText, surface)
@@ -73,7 +71,7 @@ def main():
         window = FolderCopierApp()
         window.show()
 
-        logging.info("Application started successfully")
+        logging.info("Enhanced Folder Copier started successfully")
         sys.exit(app.exec())
 
     except Exception as e:

@@ -128,5 +128,8 @@ class CopyWorker(QThread):
     def terminate_safely(self):
         """Safely terminate the worker thread"""
         if self.isRunning():
+            logging.info("Terminating copy worker thread")
             self.terminate()
             self.wait(3000)  # Wait up to 3 seconds for clean termination
+            if self.isRunning():
+                logging.warning("Copy worker thread did not terminate gracefully")

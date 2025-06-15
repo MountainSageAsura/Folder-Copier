@@ -8,10 +8,10 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QPushButton, QFrame, QGridLayout, QProgressBar,
                              QMessageBox, QDialog, QSpacerItem, QSizePolicy)
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QIcon, QPainter, QPen
+from PyQt6.QtGui import QFont, QPainter, QPen, QIcon, QPixmap
 
-from .settings_dialog import SettingsDialog
-from .password_dialog import PasswordDialog
+from ui.settings_dialog import SettingsDialog
+from ui.password_dialog import PasswordDialog
 from core.copy_worker import CopyWorker
 from core.settings_manager import SettingsManager
 from utils.network_checker import NetworkChecker
@@ -54,7 +54,7 @@ class FolderCopierApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Enhanced Folder Copier")
-        self.setFixedSize(650, 400)
+        self.setFixedSize(650, 450)
 
         # Initialize components
         self.settings_manager = SettingsManager()
@@ -67,10 +67,38 @@ class FolderCopierApp(QMainWindow):
 
         self.setup_ui()
         self.setup_network_timer()
-        self.load_icon()
+        self.set_custom_icon()
 
         # Initial network check
         self.check_network_status()
+
+    def set_custom_icon(self):
+        """Set custom folder emoji icon for the window"""
+        try:
+            # Create a pixmap with the folder emoji
+            pixmap = QPixmap(32, 32)
+            pixmap.fill(Qt.GlobalColor.transparent)
+
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+            # Set font for emoji
+            font = QFont("Segoe UI Emoji", 24)
+            painter.setFont(font)
+
+            # Draw the folder emoji
+            painter.setPen(Qt.GlobalColor.black)
+            painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "📁")
+            painter.end()
+
+            # Set the icon
+            icon = QIcon(pixmap)
+            self.setWindowIcon(icon)
+
+        except Exception as e:
+            logging.warning(f"Could not set custom icon: {str(e)}")
+            # Fallback - no icon is better than Windows default
+            pass
 
     def setup_ui(self):
         """Setup the modern user interface"""
@@ -104,7 +132,7 @@ class FolderCopierApp(QMainWindow):
         """Create the header section"""
         header_layout = QHBoxLayout()
 
-        # Title
+        # Title with folder icon
         title_label = QLabel("📁 Enhanced Folder Copier")
         title_label.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
         title_label.setStyleSheet("color: #1f2937; margin-bottom: 10px;")
@@ -130,31 +158,58 @@ class FolderCopierApp(QMainWindow):
         content_frame.setLayout(content_layout)
 
         # Source folder info
-        content_layout.addWidget(QLabel("📂 Source Folder:"), 0, 0)
+        source_icon_label = QLabel("📂")
+        source_icon_label.setFont(QFont("Segoe UI", 14))
+        source_text_label = QLabel("Source Folder:")
+        source_text_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+
+        content_layout.addWidget(source_icon_label, 0, 0)
+        content_layout.addWidget(source_text_label, 0, 1)
+
         self.source_label = QLabel("Not configured")
         self.source_label.setStyleSheet(ModernStyles.get_path_label_style())
-        content_layout.addWidget(self.source_label, 0, 1, 1, 2)
+        content_layout.addWidget(self.source_label, 0, 2, 1, 2)
 
         # Destination folder info
-        content_layout.addWidget(QLabel("📋 Destination Folder:"), 1, 0)
+        dest_icon_label = QLabel("📋")
+        dest_icon_label.setFont(QFont("Segoe UI", 14))
+        dest_text_label = QLabel("Destination Folder:")
+        dest_text_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+
+        content_layout.addWidget(dest_icon_label, 1, 0)
+        content_layout.addWidget(dest_text_label, 1, 1)
+
         self.destination_label = QLabel("Not configured")
         self.destination_label.setStyleSheet(ModernStyles.get_path_label_style())
-        content_layout.addWidget(self.destination_label, 1, 1, 1, 2)
+        content_layout.addWidget(self.destination_label, 1, 2, 1, 2)
 
         # Folder type display
-        content_layout.addWidget(QLabel("📍 Copy Type:"), 2, 0)
+        type_icon_label = QLabel("📍")
+        type_icon_label.setFont(QFont("Segoe UI", 14))
+        type_text_label = QLabel("Copy Type:")
+        type_text_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+
+        content_layout.addWidget(type_icon_label, 2, 0)
+        content_layout.addWidget(type_text_label, 2, 1)
+
         self.type_label = QLabel("Local")
         self.type_label.setStyleSheet(ModernStyles.get_info_label_style())
-        content_layout.addWidget(self.type_label, 2, 1, 1, 2)
+        content_layout.addWidget(self.type_label, 2, 2, 1, 2)
 
         # Network status (only shown for network type)
-        self.network_status_label = QLabel("🌐 Network Status:")
+        self.network_icon_label = QLabel("🌐")
+        self.network_icon_label.setFont(QFont("Segoe UI", 14))
+        self.network_text_label = QLabel("Network Status:")
+        self.network_text_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+
         self.network_status_widget = QWidget()
         network_layout = QHBoxLayout()
         network_layout.setContentsMargins(0, 0, 0, 0)
 
         self.status_indicator = StatusIndicator()
         self.network_status_text = QLabel("Checking...")
+        self.network_status_text.setStyleSheet("color: #6b7280; font-weight: 500;")
+
         self.refresh_btn = QPushButton("🔄")
         self.refresh_btn.setFixedSize(30, 30)
         self.refresh_btn.setStyleSheet(ModernStyles.get_refresh_button_style())
@@ -166,14 +221,22 @@ class FolderCopierApp(QMainWindow):
         network_layout.addWidget(self.refresh_btn)
         self.network_status_widget.setLayout(network_layout)
 
-        content_layout.addWidget(self.network_status_label, 3, 0)
-        content_layout.addWidget(self.network_status_widget, 3, 1, 1, 2)
+        content_layout.addWidget(self.network_icon_label, 3, 0)
+        content_layout.addWidget(self.network_text_label, 3, 1)
+        content_layout.addWidget(self.network_status_widget, 3, 2, 1, 2)
 
         # Auto-close option
-        content_layout.addWidget(QLabel("🔄 Auto Close:"), 4, 0)
+        auto_icon_label = QLabel("🔄")
+        auto_icon_label.setFont(QFont("Segoe UI", 14))
+        auto_text_label = QLabel("Auto Close:")
+        auto_text_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+
+        content_layout.addWidget(auto_icon_label, 4, 0)
+        content_layout.addWidget(auto_text_label, 4, 1)
+
         self.auto_close_label = QLabel("Disabled")
         self.auto_close_label.setStyleSheet(ModernStyles.get_info_label_style())
-        content_layout.addWidget(self.auto_close_label, 4, 1, 1, 2)
+        content_layout.addWidget(self.auto_close_label, 4, 2, 1, 2)
 
         parent_layout.addWidget(content_frame)
 
@@ -187,7 +250,7 @@ class FolderCopierApp(QMainWindow):
         # Status label
         self.status_label = QLabel("Ready to copy")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet("font-size: 14px; color: #374151; font-weight: 500;")
+        self.status_label.setStyleSheet("font-size: 14px; color: #374151; font-weight: 500; margin-bottom: 10px;")
         progress_layout.addWidget(self.status_label)
 
         # Progress bar
@@ -230,8 +293,11 @@ class FolderCopierApp(QMainWindow):
         settings = self.settings
 
         # Update path labels
-        self.source_label.setText(settings.get('source_path', 'Not configured'))
-        self.destination_label.setText(settings.get('destination_path', 'Not configured'))
+        source_path = settings.get('source_path', '')
+        dest_path = settings.get('destination_path', '')
+
+        self.source_label.setText(source_path if source_path else 'Not configured')
+        self.destination_label.setText(dest_path if dest_path else 'Not configured')
 
         # Update type label
         folder_type = settings.get('folder_type', 'local')
@@ -239,12 +305,17 @@ class FolderCopierApp(QMainWindow):
 
         # Show/hide network status based on type
         is_network = folder_type == 'network'
-        self.network_status_label.setVisible(is_network)
+        self.network_icon_label.setVisible(is_network)
+        self.network_text_label.setVisible(is_network)
         self.network_status_widget.setVisible(is_network)
 
         # Update auto-close label
         auto_close = settings.get('auto_close', False)
         self.auto_close_label.setText("Enabled" if auto_close else "Disabled")
+        self.auto_close_label.setStyleSheet(
+            ModernStyles.get_success_label_style() if auto_close
+            else ModernStyles.get_info_label_style()
+        )
 
     def check_network_status(self):
         """Check network connectivity status"""
@@ -256,25 +327,35 @@ class FolderCopierApp(QMainWindow):
 
         # Check connectivity
         network_ip = self.settings.get('network_ip', '127.0.0.1')
-        is_connected = self.network_checker.ping_host(network_ip)
 
-        if is_connected:
-            self.status_indicator.set_status("online")
-            self.network_status_text.setText("Connected")
-        else:
+        try:
+            is_connected = self.network_checker.ping_host(network_ip, timeout=3)
+
+            if is_connected:
+                self.status_indicator.set_status("online")
+                self.network_status_text.setText("Connected")
+                self.network_status_text.setStyleSheet("color: #10b981; font-weight: 500;")
+            else:
+                self.status_indicator.set_status("offline")
+                self.network_status_text.setText("Disconnected")
+                self.network_status_text.setStyleSheet("color: #ef4444; font-weight: 500;")
+
+        except Exception as e:
+            logging.error(f"Network check failed: {str(e)}")
             self.status_indicator.set_status("offline")
-            self.network_status_text.setText("Disconnected")
+            self.network_status_text.setText("Error")
+            self.network_status_text.setStyleSheet("color: #ef4444; font-weight: 500;")
 
     def copy_folder(self):
         """Start the folder copying process"""
         # Validate settings
-        if not self.settings.get('source_path') or not self.settings.get('destination_path'):
+        source_path = self.settings.get('source_path', '')
+        destination_path = self.settings.get('destination_path', '')
+
+        if not source_path or not destination_path:
             QMessageBox.warning(self, "Configuration Required",
                                 "Please configure source and destination folders in settings.")
             return
-
-        source_path = self.settings['source_path']
-        destination_path = self.settings['destination_path']
 
         # Validate paths
         if not os.path.exists(source_path):
@@ -288,9 +369,14 @@ class FolderCopierApp(QMainWindow):
         # Network check for network folders
         if self.settings.get('folder_type') == 'network':
             network_ip = self.settings.get('network_ip', '127.0.0.1')
-            if not self.network_checker.ping_host(network_ip):
+            try:
+                if not self.network_checker.ping_host(network_ip, timeout=5):
+                    QMessageBox.critical(self, "Network Error",
+                                         f"Cannot connect to network location: {network_ip}")
+                    return
+            except Exception as e:
                 QMessageBox.critical(self, "Network Error",
-                                     f"Cannot connect to network location: {network_ip}")
+                                     f"Network check failed: {str(e)}")
                 return
 
         # Start copying
@@ -317,7 +403,7 @@ class FolderCopierApp(QMainWindow):
         self.progress_bar.setVisible(False)
 
         if success:
-            self.status_label.setText("Copy completed successfully!")
+            self.status_label.setText("✅ Copy completed successfully!")
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle("Success")
             msg_box.setText(message)
@@ -326,9 +412,10 @@ class FolderCopierApp(QMainWindow):
 
             # Auto-close if enabled
             if self.settings.get('auto_close', False):
+                logging.info("Auto-closing application after successful copy")
                 self.close()
         else:
-            self.status_label.setText("Copy failed")
+            self.status_label.setText("❌ Copy failed")
             QMessageBox.critical(self, "Copy Error", message)
 
     def on_progress_update(self, message):
@@ -346,6 +433,7 @@ class FolderCopierApp(QMainWindow):
             # Reload settings and update UI
             self.settings = self.settings_manager.load_settings()
             self.update_ui_display()
+            logging.info("Settings updated successfully")
 
     def authenticate_user(self):
         """Authenticate user with password"""
@@ -358,9 +446,11 @@ class FolderCopierApp(QMainWindow):
             if entered_password == stored_password:
                 self.is_authenticated = True
                 self.logout_btn.setVisible(True)
+                logging.info("User authenticated successfully")
                 return True
             else:
                 QMessageBox.critical(self, "Authentication Failed", "Incorrect password.")
+                logging.warning("Authentication failed - incorrect password")
                 return False
         return False
 
@@ -368,29 +458,20 @@ class FolderCopierApp(QMainWindow):
         """Logout user"""
         self.is_authenticated = False
         self.logout_btn.setVisible(False)
-
-    def load_icon(self):
-        """Load application icon if available"""
-        try:
-            current_directory = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            icon_path = os.path.join(current_directory, 'icon.ico')
-            if os.path.exists(icon_path):
-                self.setWindowIcon(QIcon(icon_path))
-        except Exception as e:
-            logging.warning(f"Could not load icon: {str(e)}")
+        logging.info("User logged out")
 
     def closeEvent(self, event):
         """Handle application close event"""
         try:
             # Stop worker thread if running
             if self.copy_worker and self.copy_worker.isRunning():
-                self.copy_worker.terminate()
-                self.copy_worker.wait()
+                self.copy_worker.terminate_safely()
 
             # Stop network timer
             if hasattr(self, 'network_timer'):
                 self.network_timer.stop()
 
+            logging.info("Application closing gracefully")
             event.accept()
 
         except Exception as e:
