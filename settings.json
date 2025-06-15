@@ -1,7 +1,10 @@
 {
-  "source_path": "",
-  "destination_path": "",
-  "network_ip": "127.0.0.1",
-  "password": "password123",
-  "folder_type": "local"
+    "source_path": "",
+    "destination_path": "",
+    "network_ip": "127.0.0.1",
+    "password": "password123",
+    "folder_type": "local",
+    "auto_close": false,
+    "version": "1.0",
+    "last_updated": "2025-06-15T13:50:38.831520"
 }

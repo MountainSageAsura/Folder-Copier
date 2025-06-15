@@ -14,11 +14,14 @@ A modern, user-friendly GUI application for copying folders between local and ne
 - Responsive layout with proper spacing
 - Professional typography using Segoe UI
 
-### 📁 Folder Management
+### 📁 Smart Folder Management
 - Easy source and destination folder selection
 - Support for both local and network folders
 - Real-time folder path display
-- Intelligent folder conflict handling
+- **Intelligent folder conflict handling:**
+  - If destination folder exists: automatically renames existing folder to `[name]_old`
+  - If `[name]_old` already exists: deletes old version, renames current to `_old`, then copies new
+  - Automatic rollback on copy failure for data safety
 
 ### 🌐 Network Connectivity
 - Real-time network status monitoring with visual indicators
@@ -40,22 +43,28 @@ A modern, user-friendly GUI application for copying folders between local and ne
 - **Preferences Tab**: Auto-close and other application preferences
 
 ### 🔄 Smart Copy Operations
-- Robust folder copying with error handling
+- **Intelligent folder copying** with automatic conflict resolution
+- **Safe backup system**: existing folders renamed to `_old` before copying
+- **Automatic rollback** on copy failure to prevent data loss
 - Destination conflict detection and resolution
+- **Disk space validation** before copying
 - Optional auto-close after successful copy
-- Detailed success/error reporting
+- Detailed success/error reporting with comprehensive logging
 
 ### 💾 Configuration Management
-- Persistent settings storage
+- **JSON-based settings** with automatic backup
+- Persistent settings storage with version tracking
 - Automatic settings loading on startup
-- Comprehensive configuration backup
+- **Comprehensive error handling** with detailed logging
+- Settings validation and corruption recovery
 
 ## Installation
 
 ### Prerequisites
 - Python 3.6 or higher
 - tkinter (usually included with Python)
-- Standard library modules: `os`, `shutil`, `subprocess`, `platform`, `threading`
+- Standard library modules: `os`, `shutil`, `subprocess`, `platform`, `threading`, `json`, `logging`
+- No additional packages required - uses only Python standard library
 
 ### Quick Start
 
@@ -125,26 +134,19 @@ For network folder operations:
 
 ## Configuration
 
-The application stores settings in `settings.txt` with the following format:
+The application stores settings in `settings.json` with the following format:
 
-```
-# Source folder path
-/path/to/source
-
-# Destination folder path
-/path/to/destination
-
-# Network IP address
-192.168.1.100
-
-# Password
-your_secure_password
-
-# Folder type (local/network)
-local
-
-# Auto close after copy
-false
+```json
+{
+    "source_path": "/path/to/source",
+    "destination_path": "/path/to/destination", 
+    "network_ip": "192.168.1.100",
+    "password": "your_secure_password",
+    "folder_type": "local",
+    "auto_close": false,
+    "version": "1.0",
+    "last_updated": "2025-06-15T10:30:00.000000"
+}
 ```
 
 ### Configuration Options
@@ -160,11 +162,29 @@ false
 
 ## Technical Details
 
+### Technical Details
+
 ### Architecture
 - **GUI Framework**: tkinter with ttk for modern widgets
 - **Threading**: Network operations run in background threads
 - **Cross-platform**: Works on Windows, macOS, and Linux
 - **File Operations**: Uses Python's `shutil` for reliable folder copying
+- **Logging**: Comprehensive logging system with daily log files
+- **Error Handling**: Multi-layer error handling with user-friendly messages
+
+### Smart Copy Algorithm
+The application uses an intelligent copying system:
+1. **Check if destination folder exists**
+2. **If exists and `_old` version exists**: Delete `_old` version
+3. **Rename existing folder** to `[name]_old`
+4. **Copy source folder** to destination
+5. **On failure**: Automatically restore original folder from `_old` backup
+
+### Logging System
+- **Daily log files** stored in `logs/` directory
+- **Multiple log levels**: INFO, WARNING, ERROR
+- **Automatic log rotation** by date
+- **Detailed operation tracking** for troubleshooting
 
 ### Network Testing
 - **Windows**: Uses `ping -n 1 -w 3000 [IP]`
@@ -179,28 +199,45 @@ false
 
 ## Troubleshooting
 
+### Logging and Diagnostics
+The application creates detailed logs in the `logs/` directory. Check the most recent log file for detailed error information:
+- `logs/app_YYYYMMDD.log` - Daily log files with all operations
+- Logs include timestamps, operation details, and error traces
+- Use log files to diagnose issues and report bugs
+
 ### Common Issues
 
 **Problem**: Network status shows disconnected but network is working
 - **Solution**: Check IP address in settings, try manual refresh
+- **Check logs**: Look for network timeout or ping errors
 
 **Problem**: Application won't start
 - **Solution**: Ensure Python 3.6+ is installed and tkinter is available
+- **Check logs**: Look for initialization errors in the log file
 
 **Problem**: Copy operation fails
-- **Solution**: Check folder permissions and available disk space
+- **Solution**: Check folder permissions, available disk space, and source folder existence
+- **Check logs**: Detailed error information will be in the log file
 
 **Problem**: Settings not saving
 - **Solution**: Ensure write permissions in application directory
+- **Check logs**: Look for JSON write errors or permission issues
+
+**Problem**: "Insufficient disk space" error
+- **Solution**: Free up space on the destination drive or choose a different location
+- **Details**: The app calculates source folder size and compares with available space
 
 ### Error Messages
 
 | Error | Cause | Solution |
 |-------|-------|----------|
 | "Please set source and destination folders" | Paths not configured | Configure paths in settings |
+| "Source folder does not exist" | Invalid source path | Verify source folder exists and is accessible |
 | "No connection to the network" | Network unreachable | Check network settings and connectivity |
-| "Destination folder already exists" | Target exists | Choose overwrite or select different destination |
+| "Insufficient disk space" | Not enough space on destination | Free up space or choose different destination |
+| "Failed to delete existing _old folder" | Permission or lock issues | Check folder permissions and close any open files |
 | "Incorrect password" | Wrong password entered | Enter correct password or reset |
+| "Settings file is corrupted" | Invalid JSON format | App will recreate with defaults, check logs for details |
 
 ## Contributing
 
@@ -229,13 +266,17 @@ We welcome contributions! Please follow these steps:
 ## Future Enhancements
 
 - [ ] Encrypted password storage
-- [ ] Progress bar for large copy operations
-- [ ] Multiple folder selection
-- [ ] Copy scheduling and automation
-- [ ] Detailed copy logs and history
-- [ ] Theme customization options
-- [ ] Backup and restore functionality
+- [ ] Progress bar for large copy operations with speed indicators
+- [ ] Multiple folder selection with batch operations
+- [ ] Copy scheduling and automation features
+- [ ] **Enhanced logging**: Export logs, log viewer interface
+- [ ] **Backup management**: Manage and restore `_old` folder versions
+- [ ] Theme customization options with multiple color schemes
+- [ ] **Recovery tools**: Advanced backup restoration utilities
 - [ ] Integration with cloud storage services
+- [ ] **Performance optimization**: Parallel copying for large folders
+- [ ] **Network improvements**: Better connection testing and retry logic
+- [ ] Configuration export/import for easy setup migration
 
 ## License
 
