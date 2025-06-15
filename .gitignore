@@ -34,3 +34,4 @@ venv.bak/
 *.log
 folder_copier.log
 settings.json.backup
+settings.json

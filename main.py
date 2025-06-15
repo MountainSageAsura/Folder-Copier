@@ -175,12 +175,81 @@ class NetworkChecker(QThread):
             self.status_updated.emit(False, f"Error checking ({self.ip_address})")
 
 
+class CustomMessageBox(QDialog):
+    """Custom message box with proper icon and text alignment"""
+
+    def __init__(self, parent=None, title="", message="", icon_text="", message_type="info"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setWindowIcon(QIcon())  # Remove default icon
+        self.setMinimumSize(350, 150)
+        self.setup_ui(message, icon_text, message_type)
+        self.apply_styles()
+
+    def setup_ui(self, message, icon_text, message_type):
+        layout = QVBoxLayout()
+
+        # Content area with icon and message
+        content_layout = QHBoxLayout()
+
+        # Icon
+        icon_label = QLabel(icon_text)
+        icon_label.setFont(QFont("Segoe UI", 24))
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setFixedSize(60, 60)
+        content_layout.addWidget(icon_label)
+
+        # Message
+        message_label = QLabel(message)
+        message_label.setFont(QFont("Segoe UI", 11))
+        message_label.setWordWrap(True)
+        message_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        content_layout.addWidget(message_label, 1)
+
+        layout.addLayout(content_layout)
+
+        # Button
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        ok_btn = QPushButton("OK")
+        ok_btn.setMinimumWidth(80)
+        ok_btn.clicked.connect(self.accept)
+        ok_btn.setDefault(True)
+        button_layout.addWidget(ok_btn)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f8f9fa;
+            }
+            QLabel {
+                color: #333333;
+            }
+            QPushButton {
+                padding: 8px 16px;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+                background-color: #a8dadc;
+                color: #333333;
+            }
+            QPushButton:hover {
+                background-color: #96d2d4;
+            }
+        """)
+
+
 class PasswordDialog(QDialog):
     """Password authentication dialog"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("🔒 Authentication Required")
+        self.setWindowIcon(QIcon())  # Remove default icon
         self.setFixedSize(350, 200)
         self.setup_ui()
         self.apply_styles()
@@ -257,6 +326,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.app = app_instance
         self.setWindowTitle("⚙️ Settings")
+        self.setWindowIcon(QIcon())  # Remove default icon
         self.setFixedSize(600, 500)
         self.setup_ui()
         self.apply_styles()
@@ -350,10 +420,18 @@ class SettingsDialog(QDialog):
 
         # Network settings group
         network_group = QGroupBox("🌐 Network Settings")
-        network_layout = QFormLayout()
+        network_layout = QGridLayout()
 
+        # Properly aligned label and input
+        network_label = QLabel("Network IP Address:")
+        network_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.network_ip_edit = QLineEdit(self.app.network_ip)
-        network_layout.addRow("Network IP Address:", self.network_ip_edit)
+
+        network_layout.addWidget(network_label, 0, 0)
+        network_layout.addWidget(self.network_ip_edit, 0, 1)
+
+        # Set column stretch to make input field expandable
+        network_layout.setColumnStretch(1, 1)
 
         network_group.setLayout(network_layout)
         layout.addWidget(network_group)
@@ -368,19 +446,33 @@ class SettingsDialog(QDialog):
 
         # Password change group
         password_group = QGroupBox("🔐 Change Password")
-        password_layout = QFormLayout()
+        password_layout = QGridLayout()
 
+        # Current password
+        current_label = QLabel("Current Password:")
+        current_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.current_password_edit = QLineEdit()
         self.current_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        password_layout.addRow("Current Password:", self.current_password_edit)
 
+        password_layout.addWidget(current_label, 0, 0)
+        password_layout.addWidget(self.current_password_edit, 0, 1)
+
+        # New password
+        new_label = QLabel("New Password:")
+        new_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.new_password_edit = QLineEdit()
         self.new_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        password_layout.addRow("New Password:", self.new_password_edit)
 
+        password_layout.addWidget(new_label, 1, 0)
+        password_layout.addWidget(self.new_password_edit, 1, 1)
+
+        # Change password button
         change_password_btn = QPushButton("Change Password")
         change_password_btn.clicked.connect(self.change_password)
-        password_layout.addWidget(change_password_btn)
+        password_layout.addWidget(change_password_btn, 2, 0, 1, 2)
+
+        # Set column stretch to make input fields expandable
+        password_layout.setColumnStretch(1, 1)
 
         password_group.setLayout(password_layout)
         layout.addWidget(password_group)
@@ -514,6 +606,7 @@ class FolderCopierApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("📁 Folder Copier Pro")
+        self.setWindowIcon(QIcon())  # Remove default icon
         self.setFixedSize(1000, 1000)
 
         # Initialize variables
@@ -657,27 +750,35 @@ class FolderCopierApp(QMainWindow):
         status_layout.addStretch()
 
         # Network status (only show for network type)
-        self.network_status_layout = QHBoxLayout()
-
-        network_label = QLabel("🌐 Network:")
-        network_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        self.network_status_layout.addWidget(network_label)
+        self.network_label = QLabel("🌐 Network:")
+        self.network_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
 
         self.network_status_label = QLabel("Checking...")
         self.network_status_label.setFont(QFont("Segoe UI", 10))
-        self.network_status_layout.addWidget(self.network_status_label)
 
         self.refresh_btn = QPushButton("🔄")
-        self.refresh_btn.setFixedSize(50, 50)
+        self.refresh_btn.setFixedSize(40, 30)
         self.refresh_btn.clicked.connect(self.refresh_network_status)
-        self.network_status_layout.addWidget(self.refresh_btn)
+        # Make background transparent so emoji is visible
+        self.refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 2px solid #a8dadc;
+                border-radius: 5px;
+                color: #333333;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #a8dadc;
+                opacity: 0.8;
+            }
+        """)
 
-        # Add network status to main status layout if network type
+        # Only show network elements if network type is selected
         if self.folder_type == "network":
-            for i in range(self.network_status_layout.count()):
-                item = self.network_status_layout.itemAt(i)
-                if item.widget():
-                    status_layout.addWidget(item.widget())
+            status_layout.addWidget(self.network_label)
+            status_layout.addWidget(self.network_status_label)
+            status_layout.addWidget(self.refresh_btn)
 
         info_layout.addLayout(status_layout)
         info_frame.setLayout(info_layout)
@@ -818,7 +919,6 @@ class FolderCopierApp(QMainWindow):
         self.copy_btn.setStyleSheet("background-color: #b8e6b8; color: #333333;")
         self.settings_btn.setStyleSheet("background-color: #a8dadc; color: #333333;")
         self.logout_btn.setStyleSheet("background-color: #ffb3ba; color: #333333;")
-        self.refresh_btn.setStyleSheet("background-color: #a8dadc; color: #333333;")
 
     def load_settings(self):
         """Load settings from JSON file"""
@@ -868,6 +968,10 @@ class FolderCopierApp(QMainWindow):
         self.type_display.setText(self.folder_type.title())
 
         # Show/hide network status based on folder type
+        self.network_label.setVisible(self.folder_type == "network")
+        self.network_status_label.setVisible(self.folder_type == "network")
+        self.refresh_btn.setVisible(self.folder_type == "network")
+
         if self.folder_type == "network":
             self.check_network_status()
 
@@ -877,6 +981,7 @@ class FolderCopierApp(QMainWindow):
         """Check network connectivity"""
         if self.folder_type == "network":
             self.network_status_label.setText("Checking...")
+            self.logger.info(f"Checking network connectivity to {self.network_ip}")
             self.network_checker = NetworkChecker(self.network_ip)
             self.network_checker.status_updated.connect(self.update_network_status)
             self.network_checker.start()
@@ -888,13 +993,15 @@ class FolderCopierApp(QMainWindow):
 
         if is_connected:
             self.network_status_label.setStyleSheet("color: #28a745; font-weight: bold;")
+            self.logger.info(f"Network connection successful to {self.network_ip}")
         else:
             self.network_status_label.setStyleSheet("color: #dc3545; font-weight: bold;")
+            self.logger.warning(f"Network connection failed to {self.network_ip}")
 
     def refresh_network_status(self):
         """Refresh network status"""
+        self.logger.info(f"Manual network status refresh requested for {self.network_ip}")
         self.check_network_status()
-        self.logger.info("Network status refreshed")
 
     def append_log(self, message):
         """Append message to log display"""
@@ -913,6 +1020,33 @@ class FolderCopierApp(QMainWindow):
         if not self.source_path or not self.destination_path:
             QMessageBox.warning(self, "Configuration Error",
                                 "Please set source and destination folders in settings.")
+            return
+
+        # Check if source and destination are the same
+        try:
+            source_abs = os.path.abspath(self.source_path)
+            dest_abs = os.path.abspath(self.destination_path)
+            if source_abs == dest_abs:
+                QMessageBox.critical(self, "Path Error",
+                                     "Source and destination folders cannot be the same.\n\n"
+                                     f"Source: {source_abs}\n"
+                                     f"Destination: {dest_abs}")
+                self.logger.error(f"Source and destination paths are identical: {source_abs}")
+                return
+
+            # Check if source is within destination or vice versa
+            if source_abs.startswith(dest_abs + os.sep) or dest_abs.startswith(source_abs + os.sep):
+                QMessageBox.critical(self, "Path Error",
+                                     "Source and destination folders cannot be nested within each other.\n\n"
+                                     f"Source: {source_abs}\n"
+                                     f"Destination: {dest_abs}")
+                self.logger.error(f"Source and destination paths are nested: {source_abs} <-> {dest_abs}")
+                return
+
+        except Exception as e:
+            QMessageBox.warning(self, "Path Validation Error",
+                                f"Could not validate folder paths: {str(e)}")
+            self.logger.error(f"Path validation failed: {str(e)}")
             return
 
         if not os.path.exists(self.source_path):
@@ -967,14 +1101,30 @@ class FolderCopierApp(QMainWindow):
         self.reset_copy_ui()
 
         if success:
-            QMessageBox.information(self, "Success", message)
+            # Use custom success dialog with proper alignment
+            success_dialog = CustomMessageBox(
+                self,
+                "Success",
+                message,
+                "✅",
+                "success"
+            )
+            success_dialog.exec()
             self.logger.info("Copy operation completed successfully")
 
             if self.auto_close:
                 self.logger.info("Auto-closing application")
                 self.close()
         else:
-            QMessageBox.critical(self, "Copy Error", f"Copy operation failed:\n{message}")
+            # Use custom error dialog
+            error_dialog = CustomMessageBox(
+                self,
+                "Copy Error",
+                f"Copy operation failed:\n{message}",
+                "❌",
+                "error"
+            )
+            error_dialog.exec()
             self.logger.error(f"Copy operation failed: {message}")
 
     def reset_copy_ui(self):
