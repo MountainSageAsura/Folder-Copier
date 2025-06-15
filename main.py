@@ -1,369 +1,824 @@
 import os
 import shutil
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+import sys
 import subprocess
 import platform
 import threading
 import json
 import logging
 from datetime import datetime
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QLabel, QPushButton, QFrame, QTabWidget,
+                             QLineEdit, QRadioButton, QCheckBox, QProgressBar,
+                             QTextEdit, QFileDialog, QMessageBox, QDialog,
+                             QGroupBox, QGridLayout, QFormLayout, QScrollArea)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
+from PyQt6.QtGui import QFont, QPalette, QColor, QIcon
 
 
-class FolderCopierApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Folder Copier Pro")
-        self.root.geometry("600x400")
+class LogHandler(logging.Handler):
+    """Custom log handler to emit log messages to GUI"""
 
-        # Setup logging
-        self.setup_logging()
+    def __init__(self):
+        super().__init__()
+        self.log_signal = None
 
-        # Pastel color palette
-        self.colors = {
-            'bg_primary': '#f8f9fa',  # Light gray-blue
-            'bg_secondary': '#e9ecef',  # Lighter gray
-            'accent_blue': '#a8dadc',  # Soft blue
-            'accent_green': '#b8e6b8',  # Soft green
-            'accent_red': '#ffb3ba',  # Soft red
-            'accent_purple': '#d4b5d4',  # Soft purple
-            'text_primary': '#333333',  # Dark gray
-            'text_secondary': '#6c757d',  # Medium gray
-            'white': '#ffffff'
-        }
+    def emit(self, record):
+        if self.log_signal:
+            log_entry = self.format(record)
+            self.log_signal.emit(log_entry)
 
-        self.root.configure(bg=self.colors['bg_primary'])
 
-        # Get the current working directory for icon
+class CopyWorker(QThread):
+    """Worker thread for folder copying operations"""
+    progress_updated = pyqtSignal(int, str)
+    copy_finished = pyqtSignal(bool, str)
+    log_message = pyqtSignal(str)
+
+    def __init__(self, source_path, destination_path, logger):
+        super().__init__()
+        self.source_path = source_path
+        self.destination_path = destination_path
+        self.logger = logger
+        self.is_cancelled = False
+
+    def run(self):
+        """Run the copy operation"""
         try:
-            current_directory = os.path.dirname(os.path.abspath(__file__))
-            icon_path = os.path.join(current_directory, 'icon.ico')
-            if os.path.exists(icon_path):
-                self.root.iconbitmap(icon_path)
+            self.smart_folder_copy()
         except Exception as e:
-            self.logger.warning(f"Could not load application icon: {str(e)}")
+            self.logger.error(f"Copy operation failed: {str(e)}")
+            self.copy_finished.emit(False, str(e))
 
-        # Initialize variables with defaults
+    def cancel(self):
+        """Cancel the copy operation"""
+        self.is_cancelled = True
+
+    def smart_folder_copy(self):
+        """Smart folder copying with progress updates"""
+        try:
+            source_folder_name = os.path.basename(self.source_path)
+            destination_full_path = os.path.join(self.destination_path, source_folder_name)
+            destination_old_path = destination_full_path + "_old"
+
+            self.log_message.emit(f"Starting smart copy: {self.source_path} → {destination_full_path}")
+            self.progress_updated.emit(5, "Analyzing source folder...")
+
+            # Calculate total files for progress tracking
+            total_files = sum([len(files) for _, _, files in os.walk(self.source_path)])
+            self.log_message.emit(f"Found {total_files} files to copy")
+
+            if self.is_cancelled:
+                return
+
+            self.progress_updated.emit(10, "Preparing destination...")
+
+            # Handle existing destination folder
+            if os.path.exists(destination_full_path):
+                self.log_message.emit(f"Destination exists: {destination_full_path}")
+
+                if os.path.exists(destination_old_path):
+                    self.log_message.emit(f"Removing old backup: {destination_old_path}")
+                    self.progress_updated.emit(15, "Removing old backup...")
+                    shutil.rmtree(destination_old_path)
+
+                self.log_message.emit(f"Creating backup: {destination_full_path} → {destination_old_path}")
+                self.progress_updated.emit(20, "Creating backup...")
+                os.rename(destination_full_path, destination_old_path)
+
+            if self.is_cancelled:
+                return
+
+            # Copy with progress tracking
+            self.progress_updated.emit(25, "Starting file copy...")
+            self.copy_tree_with_progress(self.source_path, destination_full_path, total_files)
+
+            if not self.is_cancelled:
+                self.log_message.emit("Copy operation completed successfully")
+                self.copy_finished.emit(True, "Folder copied successfully!")
+
+        except Exception as e:
+            self.logger.error(f"Smart copy failed: {str(e)}")
+            # Try to restore backup if copy failed
+            if os.path.exists(destination_old_path) and not os.path.exists(destination_full_path):
+                try:
+                    os.rename(destination_old_path, destination_full_path)
+                    self.log_message.emit("Restored original folder after copy failure")
+                except Exception as restore_error:
+                    self.logger.error(f"Failed to restore backup: {str(restore_error)}")
+
+            self.copy_finished.emit(False, str(e))
+
+    def copy_tree_with_progress(self, src, dst, total_files):
+        """Copy directory tree with progress updates"""
+        copied_files = 0
+
+        for root, dirs, files in os.walk(src):
+            if self.is_cancelled:
+                break
+
+            # Create corresponding directory structure
+            rel_path = os.path.relpath(root, src)
+            dst_root = os.path.join(dst, rel_path) if rel_path != '.' else dst
+
+            if not os.path.exists(dst_root):
+                os.makedirs(dst_root)
+
+            # Copy files
+            for file in files:
+                if self.is_cancelled:
+                    break
+
+                src_file = os.path.join(root, file)
+                dst_file = os.path.join(dst_root, file)
+
+                try:
+                    shutil.copy2(src_file, dst_file)
+                    copied_files += 1
+
+                    # Update progress
+                    progress = 25 + int((copied_files / total_files) * 70)  # 25-95% range
+                    self.progress_updated.emit(progress, f"Copying: {file}")
+                    self.log_message.emit(f"Copied: {src_file}")
+
+                except Exception as e:
+                    self.log_message.emit(f"Failed to copy {src_file}: {str(e)}")
+                    raise
+
+        if not self.is_cancelled:
+            self.progress_updated.emit(100, "Copy completed!")
+
+
+class NetworkChecker(QThread):
+    """Worker thread for network connectivity checking"""
+    status_updated = pyqtSignal(bool, str)
+
+    def __init__(self, ip_address):
+        super().__init__()
+        self.ip_address = ip_address
+
+    def run(self):
+        """Check network connectivity"""
+        try:
+            if platform.system().lower() == "windows":
+                cmd = ["ping", "-n", "1", "-w", "3000", self.ip_address]
+            else:
+                cmd = ["ping", "-c", "1", "-W", "3", self.ip_address]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            is_connected = result.returncode == 0
+
+            status_text = f"Connected ({self.ip_address})" if is_connected else f"Disconnected ({self.ip_address})"
+            self.status_updated.emit(is_connected, status_text)
+
+        except Exception:
+            self.status_updated.emit(False, f"Error checking ({self.ip_address})")
+
+
+class PasswordDialog(QDialog):
+    """Password authentication dialog"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🔒 Authentication Required")
+        self.setFixedSize(350, 200)
+        self.setup_ui()
+        self.apply_styles()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        # Title with emoji
+        title_label = QLabel("🔒 Enter Password:")
+        title_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        layout.addWidget(title_label)
+
+        # Password input
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.setFont(QFont("Segoe UI", 11))
+        self.password_input.returnPressed.connect(self.accept)
+        layout.addWidget(self.password_input)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        login_btn = QPushButton("Login")
+        login_btn.clicked.connect(self.accept)
+        login_btn.setDefault(True)
+        button_layout.addWidget(login_btn)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+
+        # Focus on password input
+        self.password_input.setFocus()
+
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f8f9fa;
+            }
+            QLabel {
+                color: #333333;
+                margin: 10px;
+            }
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e9ecef;
+                border-radius: 5px;
+                background-color: white;
+                margin: 5px;
+            }
+            QPushButton {
+                padding: 8px 20px;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+                margin: 5px;
+            }
+            QPushButton:hover {
+                opacity: 0.8;
+            }
+        """)
+
+    def get_password(self):
+        return self.password_input.text()
+
+
+class SettingsDialog(QDialog):
+    """Settings configuration dialog with tabs"""
+
+    def __init__(self, app_instance, parent=None):
+        super().__init__(parent)
+        self.app = app_instance
+        self.setWindowTitle("⚙️ Settings")
+        self.setFixedSize(600, 500)
+        self.setup_ui()
+        self.apply_styles()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        # Title with emoji
+        title_label = QLabel("⚙️ Settings")
+        title_label.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title_label)
+
+        # Tab widget
+        self.tab_widget = QTabWidget()
+
+        # Create tabs
+        self.create_folders_tab()
+        self.create_connection_tab()
+        self.create_security_tab()
+        self.create_preferences_tab()
+
+        layout.addWidget(self.tab_widget)
+
+        # Save button
+        save_btn = QPushButton("Save Settings")
+        save_btn.clicked.connect(self.save_settings)
+        save_btn.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        layout.addWidget(save_btn)
+
+        self.setLayout(layout)
+
+    def create_folders_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Source folder group
+        source_group = QGroupBox("📁 Source Folder")
+        source_layout = QVBoxLayout()
+
+        self.source_path_edit = QLineEdit(self.app.source_path)
+        self.source_path_edit.setReadOnly(True)
+        source_layout.addWidget(self.source_path_edit)
+
+        source_browse_btn = QPushButton("Browse Source Folder")
+        source_browse_btn.clicked.connect(self.browse_source)
+        source_layout.addWidget(source_browse_btn)
+
+        source_group.setLayout(source_layout)
+        layout.addWidget(source_group)
+
+        # Destination folder group
+        dest_group = QGroupBox("📁 Destination Folder")
+        dest_layout = QVBoxLayout()
+
+        self.dest_path_edit = QLineEdit(self.app.destination_path)
+        self.dest_path_edit.setReadOnly(True)
+        dest_layout.addWidget(self.dest_path_edit)
+
+        dest_browse_btn = QPushButton("Browse Destination Folder")
+        dest_browse_btn.clicked.connect(self.browse_destination)
+        dest_layout.addWidget(dest_browse_btn)
+
+        dest_group.setLayout(dest_layout)
+        layout.addWidget(dest_group)
+
+        layout.addStretch()
+        widget.setLayout(layout)
+        self.tab_widget.addTab(widget, "📁 Folders")
+
+    def create_connection_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Folder type group
+        type_group = QGroupBox("🌐 Folder Type")
+        type_layout = QVBoxLayout()
+
+        self.local_radio = QRadioButton("Local Folder")
+        self.network_radio = QRadioButton("Network Folder")
+
+        if self.app.folder_type == "local":
+            self.local_radio.setChecked(True)
+        else:
+            self.network_radio.setChecked(True)
+
+        type_layout.addWidget(self.local_radio)
+        type_layout.addWidget(self.network_radio)
+        type_group.setLayout(type_layout)
+        layout.addWidget(type_group)
+
+        # Network settings group
+        network_group = QGroupBox("🌐 Network Settings")
+        network_layout = QFormLayout()
+
+        self.network_ip_edit = QLineEdit(self.app.network_ip)
+        network_layout.addRow("Network IP Address:", self.network_ip_edit)
+
+        network_group.setLayout(network_layout)
+        layout.addWidget(network_group)
+
+        layout.addStretch()
+        widget.setLayout(layout)
+        self.tab_widget.addTab(widget, "🌐 Connection")
+
+    def create_security_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Password change group
+        password_group = QGroupBox("🔐 Change Password")
+        password_layout = QFormLayout()
+
+        self.current_password_edit = QLineEdit()
+        self.current_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        password_layout.addRow("Current Password:", self.current_password_edit)
+
+        self.new_password_edit = QLineEdit()
+        self.new_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        password_layout.addRow("New Password:", self.new_password_edit)
+
+        change_password_btn = QPushButton("Change Password")
+        change_password_btn.clicked.connect(self.change_password)
+        password_layout.addWidget(change_password_btn)
+
+        password_group.setLayout(password_layout)
+        layout.addWidget(password_group)
+
+        layout.addStretch()
+        widget.setLayout(layout)
+        self.tab_widget.addTab(widget, "🔐 Security")
+
+    def create_preferences_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Application preferences group
+        pref_group = QGroupBox("⚙️ Application Preferences")
+        pref_layout = QVBoxLayout()
+
+        self.auto_close_checkbox = QCheckBox("Auto-close application after successful copy")
+        self.auto_close_checkbox.setChecked(self.app.auto_close)
+        pref_layout.addWidget(self.auto_close_checkbox)
+
+        pref_group.setLayout(pref_layout)
+        layout.addWidget(pref_group)
+
+        layout.addStretch()
+        widget.setLayout(layout)
+        self.tab_widget.addTab(widget, "⚙️ Preferences")
+
+    def browse_source(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Source Folder")
+        if folder:
+            self.source_path_edit.setText(folder)
+
+    def browse_destination(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Destination Folder")
+        if folder:
+            self.dest_path_edit.setText(folder)
+
+    def change_password(self):
+        if self.current_password_edit.text() != self.app.password:
+            QMessageBox.warning(self, "Error", "Current password is incorrect.")
+            return
+
+        new_password = self.new_password_edit.text()
+        if len(new_password) < 3:
+            QMessageBox.warning(self, "Error", "New password must be at least 3 characters long.")
+            return
+
+        self.app.password = new_password
+        self.current_password_edit.clear()
+        self.new_password_edit.clear()
+        QMessageBox.information(self, "Success", "Password changed successfully!")
+
+    def save_settings(self):
+        # Update app settings
+        self.app.source_path = self.source_path_edit.text()
+        self.app.destination_path = self.dest_path_edit.text()
+        self.app.network_ip = self.network_ip_edit.text()
+        self.app.folder_type = "local" if self.local_radio.isChecked() else "network"
+        self.app.auto_close = self.auto_close_checkbox.isChecked()
+
+        if self.app.save_settings():
+            QMessageBox.information(self, "Success", "Settings saved successfully!")
+            self.app.update_display()
+            self.accept()
+
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f8f9fa;
+            }
+            QLabel {
+                color: #333333;
+                font-size: 12px;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #e9ecef;
+                border-radius: 5px;
+                margin: 10px 0px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e9ecef;
+                border-radius: 5px;
+                background-color: white;
+                margin: 2px;
+            }
+            QPushButton {
+                padding: 8px 16px;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+                margin: 2px;
+                background-color: #a8dadc;
+                color: #333333;
+            }
+            QPushButton:hover {
+                background-color: #96d2d4;
+            }
+            QCheckBox, QRadioButton {
+                font-size: 11px;
+                color: #333333;
+                margin: 5px;
+            }
+            QTabWidget::pane {
+                border: 1px solid #e9ecef;
+                border-radius: 5px;
+            }
+            QTabBar::tab {
+                background-color: #e9ecef;
+                padding: 8px 16px;
+                margin-right: 2px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+            }
+            QTabBar::tab:selected {
+                background-color: #a8dadc;
+            }
+        """)
+
+
+class FolderCopierApp(QMainWindow):
+    log_signal = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("📁 Folder Copier Pro")
+        self.setFixedSize(1000, 1000)
+
+        # Initialize variables
         self.source_path = ""
         self.destination_path = ""
         self.network_ip = "127.0.0.1"
         self.password = "password"
-        self.folder_type = "local"  # 'local' or 'network'
+        self.folder_type = "local"
         self.auto_close = False
         self.is_logged_in = False
         self.network_status = False
 
-        # Settings file path
+        # Settings file
         self.settings_file = "settings.json"
 
-        try:
-            self.load_settings()
-            self.create_main_interface()
-            self.check_network_status()
-            self.logger.info("Application initialized successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize application: {str(e)}")
-            messagebox.showerror("Initialization Error", f"Failed to start application: {str(e)}")
+        # Setup logging
+        self.setup_logging()
+
+        # Worker threads
+        self.copy_worker = None
+        self.network_checker = None
+
+        # Load settings and setup UI
+        self.load_settings()
+        self.setup_ui()
+        self.apply_styles()
+        self.check_network_status()
+
+        # Connect log signal
+        self.log_signal.connect(self.append_log)
+
+        self.logger.info("Application initialized successfully")
 
     def setup_logging(self):
-        """Setup logging configuration"""
+        """Setup logging system"""
         try:
-            # Create logs directory if it doesn't exist
             if not os.path.exists('logs'):
                 os.makedirs('logs')
 
-            # Setup logger
             self.logger = logging.getLogger('FolderCopierApp')
             self.logger.setLevel(logging.INFO)
 
-            # Create file handler
+            # File handler
             log_filename = f"logs/app_{datetime.now().strftime('%Y%m%d')}.log"
             file_handler = logging.FileHandler(log_filename)
             file_handler.setLevel(logging.INFO)
 
-            # Create console handler
-            console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.WARNING)
+            # GUI handler
+            self.gui_log_handler = LogHandler()
+            self.gui_log_handler.log_signal = self.log_signal
+            self.gui_log_handler.setLevel(logging.INFO)
 
-            # Create formatter
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            # Formatter
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
             file_handler.setFormatter(formatter)
-            console_handler.setFormatter(formatter)
 
-            # Add handlers to logger
+            gui_formatter = logging.Formatter('%(asctime)s - %(message)s')
+            self.gui_log_handler.setFormatter(gui_formatter)
+
             if not self.logger.handlers:
                 self.logger.addHandler(file_handler)
-                self.logger.addHandler(console_handler)
+                self.logger.addHandler(self.gui_log_handler)
 
         except Exception as e:
             print(f"Failed to setup logging: {str(e)}")
-            # Create a basic logger if file logging fails
             self.logger = logging.getLogger('FolderCopierApp')
-            self.logger.setLevel(logging.INFO)
 
-    def create_main_interface(self):
-        """Create the main user interface"""
-        try:
-            # Main container with padding
-            main_container = tk.Frame(self.root, bg=self.colors['bg_primary'])
-            main_container.pack(fill='both', expand=True, padx=30, pady=30)
+    def setup_ui(self):
+        """Setup the main user interface"""
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
 
-            # Title
-            title_label = tk.Label(
-                main_container,
-                text="Folder Copier Pro",
-                font=("Segoe UI", 18, "bold"),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            )
-            title_label.pack(pady=(0, 20))
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(30, 30, 30, 30)
 
-            # Info panel
-            info_frame = tk.Frame(main_container, bg=self.colors['bg_secondary'], relief='flat', bd=1)
-            info_frame.pack(fill='x', pady=(0, 20), padx=10)
+        # Title with emoji
+        title_label = QLabel("📁 Folder Copier Pro")
+        title_label.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(title_label)
 
-            # Source folder display
-            source_frame = tk.Frame(info_frame, bg=self.colors['bg_secondary'])
-            source_frame.pack(fill='x', padx=15, pady=10)
+        # Info panel
+        self.create_info_panel(main_layout)
 
-            tk.Label(
-                source_frame,
-                text="Source Folder:",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_primary']
-            ).pack(anchor='w')
+        # Progress section
+        self.create_progress_section(main_layout)
 
-            self.source_display = tk.Label(
-                source_frame,
-                text=self.source_path or "Not selected",
-                font=("Segoe UI", 9),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_secondary'],
-                wraplength=500,
-                justify='left'
-            )
-            self.source_display.pack(anchor='w')
+        # Log section
+        self.create_log_section(main_layout)
 
-            # Destination folder display
-            dest_frame = tk.Frame(info_frame, bg=self.colors['bg_secondary'])
-            dest_frame.pack(fill='x', padx=15, pady=10)
+        # Button section
+        self.create_button_section(main_layout)
 
-            tk.Label(
-                dest_frame,
-                text="Destination Folder:",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_primary']
-            ).pack(anchor='w')
+        central_widget.setLayout(main_layout)
 
-            self.dest_display = tk.Label(
-                dest_frame,
-                text=self.destination_path or "Not selected",
-                font=("Segoe UI", 9),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_secondary'],
-                wraplength=500,
-                justify='left'
-            )
-            self.dest_display.pack(anchor='w')
+    def create_info_panel(self, parent_layout):
+        """Create the information display panel"""
+        info_frame = QFrame()
+        info_frame.setFrameStyle(QFrame.Shape.Box)
+        info_layout = QVBoxLayout()
 
-            # Folder type and network status
-            status_frame = tk.Frame(info_frame, bg=self.colors['bg_secondary'])
-            status_frame.pack(fill='x', padx=15, pady=10)
+        # Source folder
+        source_layout = QVBoxLayout()
+        source_label = QLabel("📁 Source Folder:")
+        source_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        source_layout.addWidget(source_label)
 
-            # Folder type display
-            type_frame = tk.Frame(status_frame, bg=self.colors['bg_secondary'])
-            type_frame.pack(fill='x')
+        self.source_display = QLabel(self.source_path or "Not selected")
+        self.source_display.setFont(QFont("Segoe UI", 10))
+        self.source_display.setWordWrap(True)
+        source_layout.addWidget(self.source_display)
 
-            tk.Label(
-                type_frame,
-                text="Folder Type:",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_primary']
-            ).pack(side='left')
+        info_layout.addLayout(source_layout)
 
-            self.type_display = tk.Label(
-                type_frame,
-                text=self.folder_type.title(),
-                font=("Segoe UI", 9),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_secondary']
-            )
-            self.type_display.pack(side='left', padx=(10, 0))
+        # Destination folder
+        dest_layout = QVBoxLayout()
+        dest_label = QLabel("📁 Destination Folder:")
+        dest_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        dest_layout.addWidget(dest_label)
 
-            # Network status (only show if network type is selected)
-            self.network_frame = tk.Frame(status_frame, bg=self.colors['bg_secondary'])
-            if self.folder_type == "network":
-                self.network_frame.pack(fill='x', pady=(5, 0))
+        self.dest_display = QLabel(self.destination_path or "Not selected")
+        self.dest_display.setFont(QFont("Segoe UI", 10))
+        self.dest_display.setWordWrap(True)
+        dest_layout.addWidget(self.dest_display)
 
-            tk.Label(
-                self.network_frame,
-                text="Network Status:",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_primary']
-            ).pack(side='left')
+        info_layout.addLayout(dest_layout)
 
-            self.status_indicator = tk.Label(
-                self.network_frame,
-                text="●",
-                font=("Segoe UI", 12),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['accent_red']
-            )
-            self.status_indicator.pack(side='left', padx=(10, 5))
+        # Status section
+        status_layout = QHBoxLayout()
 
-            self.status_text = tk.Label(
-                self.network_frame,
-                text="Checking...",
-                font=("Segoe UI", 9),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_secondary']
-            )
-            self.status_text.pack(side='left')
+        # Folder type
+        type_label = QLabel("📁 Type:")
+        type_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        status_layout.addWidget(type_label)
 
-            # Refresh button
-            self.refresh_btn = tk.Button(
-                self.network_frame,
-                text="🔄",
-                font=("Segoe UI", 10),
-                bg=self.colors['accent_blue'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                padx=8,
-                pady=2,
-                command=self.refresh_network_status,
-                cursor="hand2"
-            )
-            self.refresh_btn.pack(side='left', padx=(10, 0))
+        self.type_display = QLabel(self.folder_type.title())
+        self.type_display.setFont(QFont("Segoe UI", 10))
+        status_layout.addWidget(self.type_display)
 
-            # Main buttons
-            button_frame = tk.Frame(main_container, bg=self.colors['bg_primary'])
-            button_frame.pack(pady=20)
+        status_layout.addStretch()
 
-            # Copy button
-            self.copy_btn = tk.Button(
-                button_frame,
-                text="Copy Folder",
-                font=("Segoe UI", 12, "bold"),
-                bg=self.colors['accent_green'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                padx=30,
-                pady=12,
-                command=self.copy_folder,
-                cursor="hand2"
-            )
-            self.copy_btn.pack(side='left', padx=10)
+        # Network status (only show for network type)
+        self.network_status_layout = QHBoxLayout()
 
-            # Settings button
-            self.settings_btn = tk.Button(
-                button_frame,
-                text="Settings",
-                font=("Segoe UI", 12),
-                bg=self.colors['accent_blue'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                padx=30,
-                pady=12,
-                command=self.open_settings,
-                cursor="hand2"
-            )
-            self.settings_btn.pack(side='left', padx=10)
+        network_label = QLabel("🌐 Network:")
+        network_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        self.network_status_layout.addWidget(network_label)
 
-            # Logout button (only show when logged in)
-            self.logout_btn = tk.Button(
-                button_frame,
-                text="Logout",
-                font=("Segoe UI", 12),
-                bg=self.colors['accent_red'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                padx=20,
-                pady=12,
-                command=self.logout,
-                cursor="hand2"
-            )
-            if self.is_logged_in:
-                self.logout_btn.pack(side='left', padx=10)
+        self.network_status_label = QLabel("Checking...")
+        self.network_status_label.setFont(QFont("Segoe UI", 10))
+        self.network_status_layout.addWidget(self.network_status_label)
 
-        except Exception as e:
-            self.logger.error(f"Failed to create main interface: {str(e)}")
-            messagebox.showerror("Interface Error", f"Failed to create interface: {str(e)}")
+        self.refresh_btn = QPushButton("🔄")
+        self.refresh_btn.setFixedSize(50, 50)
+        self.refresh_btn.clicked.connect(self.refresh_network_status)
+        self.network_status_layout.addWidget(self.refresh_btn)
 
-    def update_display(self):
-        """Update the display elements"""
-        try:
-            self.source_display.config(text=self.source_path or "Not selected")
-            self.dest_display.config(text=self.destination_path or "Not selected")
-            self.type_display.config(text=self.folder_type.title())
-
-            # Show/hide network status based on folder type
-            if self.folder_type == "network":
-                self.network_frame.pack(fill='x', pady=(5, 0))
-                self.check_network_status()
-            else:
-                self.network_frame.pack_forget()
-
-            self.logger.info("Display updated successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to update display: {str(e)}")
-
-    def check_network_status(self):
-        """Check network connectivity in a separate thread"""
+        # Add network status to main status layout if network type
         if self.folder_type == "network":
-            try:
-                threading.Thread(target=self._ping_network, daemon=True).start()
-            except Exception as e:
-                self.logger.error(f"Failed to start network check thread: {str(e)}")
+            for i in range(self.network_status_layout.count()):
+                item = self.network_status_layout.itemAt(i)
+                if item.widget():
+                    status_layout.addWidget(item.widget())
 
-    def _ping_network(self):
-        """Ping the network IP address"""
-        try:
-            if platform.system().lower() == "windows":
-                cmd = ["ping", "-n", "1", "-w", "3000", self.network_ip]
-            else:
-                cmd = ["ping", "-c", "1", "-W", "3", self.network_ip]
+        info_layout.addLayout(status_layout)
+        info_frame.setLayout(info_layout)
+        parent_layout.addWidget(info_frame)
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            self.network_status = result.returncode == 0
+    def create_progress_section(self, parent_layout):
+        """Create the progress bar section"""
+        progress_group = QGroupBox("📊 Copy Progress")
+        progress_layout = QVBoxLayout()
 
-            # Update UI in main thread
-            self.root.after(0, self._update_network_status)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        progress_layout.addWidget(self.progress_bar)
 
-        except subprocess.TimeoutExpired:
-            self.logger.warning(f"Network ping timeout for {self.network_ip}")
-            self.network_status = False
-            self.root.after(0, self._update_network_status)
-        except Exception as e:
-            self.logger.error(f"Network ping failed: {str(e)}")
-            self.network_status = False
-            self.root.after(0, self._update_network_status)
+        self.progress_label = QLabel("")
+        self.progress_label.setVisible(False)
+        self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        progress_layout.addWidget(self.progress_label)
 
-    def _update_network_status(self):
-        """Update network status indicators"""
-        try:
-            if self.network_status:
-                self.status_indicator.config(fg=self.colors['accent_green'])
-                self.status_text.config(text=f"Connected ({self.network_ip})")
-                self.logger.info(f"Network connection successful to {self.network_ip}")
-            else:
-                self.status_indicator.config(fg=self.colors['accent_red'])
-                self.status_text.config(text=f"Disconnected ({self.network_ip})")
-                self.logger.warning(f"Network connection failed to {self.network_ip}")
-        except Exception as e:
-            self.logger.error(f"Failed to update network status display: {str(e)}")
+        progress_group.setLayout(progress_layout)
+        parent_layout.addWidget(progress_group)
 
-    def refresh_network_status(self):
-        """Refresh network status"""
-        try:
-            self.status_text.config(text="Checking...")
-            self.check_network_status()
-            self.logger.info("Network status refresh initiated")
-        except Exception as e:
-            self.logger.error(f"Failed to refresh network status: {str(e)}")
+    def create_log_section(self, parent_layout):
+        """Create the live log display section"""
+        log_group = QGroupBox("📝 Live Log")
+        log_layout = QVBoxLayout()
+
+        self.log_display = QTextEdit()
+        self.log_display.setMaximumHeight(150)
+        self.log_display.setReadOnly(True)
+        self.log_display.setFont(QFont("Consolas", 9))
+        log_layout.addWidget(self.log_display)
+
+        # Log controls
+        log_controls = QHBoxLayout()
+
+        clear_log_btn = QPushButton("Clear Log")
+        clear_log_btn.clicked.connect(self.clear_log)
+        log_controls.addWidget(clear_log_btn)
+
+        log_controls.addStretch()
+        log_layout.addLayout(log_controls)
+
+        log_group.setLayout(log_layout)
+        parent_layout.addWidget(log_group)
+
+    def create_button_section(self, parent_layout):
+        """Create the main action buttons"""
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(15)
+
+        # Copy button
+        self.copy_btn = QPushButton("📁 Copy Folder")
+        self.copy_btn.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        self.copy_btn.setMinimumHeight(50)
+        self.copy_btn.clicked.connect(self.copy_folder)
+        button_layout.addWidget(self.copy_btn)
+
+        # Settings button
+        self.settings_btn = QPushButton("⚙️ Settings")
+        self.settings_btn.setFont(QFont("Segoe UI", 12))
+        self.settings_btn.setMinimumHeight(50)
+        self.settings_btn.clicked.connect(self.open_settings)
+        button_layout.addWidget(self.settings_btn)
+
+        # Logout button (hidden by default)
+        self.logout_btn = QPushButton("🚪 Logout")
+        self.logout_btn.setFont(QFont("Segoe UI", 12))
+        self.logout_btn.setMinimumHeight(50)
+        self.logout_btn.clicked.connect(self.logout)
+        self.logout_btn.setVisible(self.is_logged_in)
+        button_layout.addWidget(self.logout_btn)
+
+        parent_layout.addLayout(button_layout)
+
+    def apply_styles(self):
+        """Apply custom styles to the application"""
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f8f9fa;
+            }
+            QLabel {
+                color: #333333;
+            }
+            QFrame {
+                background-color: #e9ecef;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 15px;
+                margin: 5px;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #dee2e6;
+                border-radius: 8px;
+                margin: 5px 0px;
+                padding-top: 15px;
+                background-color: #ffffff;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 8px 0 8px;
+                color: #495057;
+            }
+            QPushButton {
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-weight: bold;
+                margin: 2px;
+            }
+            QPushButton:hover {
+                opacity: 0.8;
+            }
+            QPushButton:pressed {
+                opacity: 0.6;
+            }
+            QProgressBar {
+                border: 2px solid #dee2e6;
+                border-radius: 5px;
+                text-align: center;
+                background-color: #f8f9fa;
+            }
+            QProgressBar::chunk {
+                background-color: #b8e6b8;
+                border-radius: 3px;
+            }
+            QTextEdit {
+                border: 2px solid #dee2e6;
+                border-radius: 5px;
+                background-color: #ffffff;
+                color: #333333;
+            }
+        """)
+
+        # Set button colors
+        self.copy_btn.setStyleSheet("background-color: #b8e6b8; color: #333333;")
+        self.settings_btn.setStyleSheet("background-color: #a8dadc; color: #333333;")
+        self.logout_btn.setStyleSheet("background-color: #ffb3ba; color: #333333;")
+        self.refresh_btn.setStyleSheet("background-color: #a8dadc; color: #333333;")
 
     def load_settings(self):
         """Load settings from JSON file"""
@@ -379,20 +834,9 @@ class FolderCopierApp:
                     self.folder_type = settings.get('folder_type', 'local')
                     self.auto_close = settings.get('auto_close', False)
 
-                    self.logger.info("Settings loaded successfully from JSON file")
-            else:
-                self.logger.info("No settings file found, using defaults")
-                self.save_settings()  # Create default settings file
-
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Invalid JSON in settings file: {str(e)}")
-            messagebox.showwarning("Settings Error",
-                                   f"Settings file is corrupted. Using default settings.\nError: {str(e)}")
-            self.save_settings()  # Recreate with defaults
         except Exception as e:
-            self.logger.error(f"Failed to load settings: {str(e)}")
-            messagebox.showwarning("Settings Error",
-                                   f"Failed to load settings: {str(e)}\nUsing default settings.")
+            QMessageBox.warning(self, "Settings Error", f"Failed to load settings: {str(e)}")
+            self.save_settings()
 
     def save_settings(self):
         """Save settings to JSON file"""
@@ -404,624 +848,205 @@ class FolderCopierApp:
                 'password': self.password,
                 'folder_type': self.folder_type,
                 'auto_close': self.auto_close,
-                'version': '1.0',
+                'version': '2.0',
                 'last_updated': datetime.now().isoformat()
             }
-
-            # Create backup of existing settings
-            if os.path.exists(self.settings_file):
-                backup_file = f"{self.settings_file}.backup"
-                shutil.copy2(self.settings_file, backup_file)
 
             with open(self.settings_file, 'w', encoding='utf-8') as file:
                 json.dump(settings, file, indent=4, ensure_ascii=False)
 
-            self.logger.info("Settings saved successfully to JSON file")
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to save settings: {str(e)}")
-            messagebox.showerror("Settings Error", f"Failed to save settings: {str(e)}")
+            QMessageBox.critical(self, "Settings Error", f"Failed to save settings: {str(e)}")
             return False
 
-    def smart_folder_copy(self, source, destination):
-        """
-        Smart folder copying with automatic handling of existing folders
-        - If destination exists: rename to _old and copy new
-        - If _old version exists: delete _old, rename current to _old, then copy new
-        """
-        try:
-            source_folder_name = os.path.basename(source)
-            destination_full_path = os.path.join(destination, source_folder_name)
-            destination_old_path = destination_full_path + "_old"
+    def update_display(self):
+        """Update the main display"""
+        self.source_display.setText(self.source_path or "Not selected")
+        self.dest_display.setText(self.destination_path or "Not selected")
+        self.type_display.setText(self.folder_type.title())
 
-            self.logger.info(f"Starting smart copy from {source} to {destination_full_path}")
+        # Show/hide network status based on folder type
+        if self.folder_type == "network":
+            self.check_network_status()
 
-            # Check if destination folder exists
-            if os.path.exists(destination_full_path):
-                self.logger.info(f"Destination folder exists: {destination_full_path}")
+        self.logger.info("Display updated")
 
-                # Check if _old version exists
-                if os.path.exists(destination_old_path):
-                    self.logger.info(f"Old version exists, deleting: {destination_old_path}")
-                    try:
-                        shutil.rmtree(destination_old_path)
-                        self.logger.info(f"Successfully deleted old version: {destination_old_path}")
-                    except Exception as e:
-                        self.logger.error(f"Failed to delete old version: {str(e)}")
-                        raise Exception(f"Failed to delete existing _old folder: {str(e)}")
+    def check_network_status(self):
+        """Check network connectivity"""
+        if self.folder_type == "network":
+            self.network_status_label.setText("Checking...")
+            self.network_checker = NetworkChecker(self.network_ip)
+            self.network_checker.status_updated.connect(self.update_network_status)
+            self.network_checker.start()
 
-                # Rename existing folder to _old
-                self.logger.info(f"Renaming existing folder to _old: {destination_full_path} -> {destination_old_path}")
-                try:
-                    os.rename(destination_full_path, destination_old_path)
-                    self.logger.info(f"Successfully renamed to _old version")
-                except Exception as e:
-                    self.logger.error(f"Failed to rename existing folder: {str(e)}")
-                    raise Exception(f"Failed to rename existing folder: {str(e)}")
+    def update_network_status(self, is_connected, status_text):
+        """Update network status display"""
+        self.network_status = is_connected
+        self.network_status_label.setText(status_text)
 
-            # Copy the source folder to destination
-            self.logger.info(f"Copying folder from {source} to {destination_full_path}")
-            try:
-                shutil.copytree(source, destination_full_path)
-                self.logger.info(f"Successfully copied folder to {destination_full_path}")
-                return True
-            except Exception as e:
-                self.logger.error(f"Failed to copy folder: {str(e)}")
+        if is_connected:
+            self.network_status_label.setStyleSheet("color: #28a745; font-weight: bold;")
+        else:
+            self.network_status_label.setStyleSheet("color: #dc3545; font-weight: bold;")
 
-                # If copy failed and we renamed a folder, try to restore it
-                if os.path.exists(destination_old_path) and not os.path.exists(destination_full_path):
-                    try:
-                        os.rename(destination_old_path, destination_full_path)
-                        self.logger.info("Restored original folder after copy failure")
-                    except Exception as restore_error:
-                        self.logger.error(f"Failed to restore original folder: {str(restore_error)}")
+    def refresh_network_status(self):
+        """Refresh network status"""
+        self.check_network_status()
+        self.logger.info("Network status refreshed")
 
-                raise Exception(f"Failed to copy folder: {str(e)}")
+    def append_log(self, message):
+        """Append message to log display"""
+        self.log_display.append(message)
+        # Auto-scroll to bottom
+        scrollbar = self.log_display.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
-        except Exception as e:
-            self.logger.error(f"Smart folder copy failed: {str(e)}")
-            raise
+    def clear_log(self):
+        """Clear the log display"""
+        self.log_display.clear()
 
     def copy_folder(self):
-        """Copy the specified folder using smart copy logic"""
-        try:
-            # Validate inputs
-            if not self.source_path or not self.destination_path:
-                error_msg = "Please set source and destination folders in settings."
-                self.logger.warning("Copy attempted without proper folder configuration")
-                messagebox.showerror("Configuration Error", error_msg)
-                return
+        """Start folder copy operation"""
+        # Validate inputs
+        if not self.source_path or not self.destination_path:
+            QMessageBox.warning(self, "Configuration Error",
+                                "Please set source and destination folders in settings.")
+            return
 
-            if not os.path.exists(self.source_path):
-                error_msg = f"Source folder does not exist: {self.source_path}"
-                self.logger.error(error_msg)
-                messagebox.showerror("Source Error", error_msg)
-                return
+        if not os.path.exists(self.source_path):
+            QMessageBox.critical(self, "Source Error",
+                                 f"Source folder does not exist:\n{self.source_path}")
+            return
 
-            if not os.path.exists(self.destination_path):
-                error_msg = f"Destination folder does not exist: {self.destination_path}"
-                self.logger.error(error_msg)
-                messagebox.showerror("Destination Error", error_msg)
-                return
+        if not os.path.exists(self.destination_path):
+            QMessageBox.critical(self, "Destination Error",
+                                 f"Destination folder does not exist:\n{self.destination_path}")
+            return
 
-            # Check network connectivity for network operations
-            if self.folder_type == "network" and not self.network_status:
-                error_msg = "No connection to the network. Please check network settings."
-                self.logger.warning("Copy attempted without network connection")
-                messagebox.showerror("Network Error", error_msg)
-                return
+        if self.folder_type == "network" and not self.network_status:
+            QMessageBox.warning(self, "Network Error",
+                                "No connection to the network. Please check network settings.")
+            return
 
-            # Check available space (basic check)
-            try:
-                source_size = self.get_folder_size(self.source_path)
-                available_space = shutil.disk_usage(self.destination_path).free
+        # Start copy operation
+        self.copy_btn.setEnabled(False)
+        self.copy_btn.setText("⏸️ Cancel")
+        self.copy_btn.clicked.disconnect()
+        self.copy_btn.clicked.connect(self.cancel_copy)
 
-                if source_size > available_space:
-                    error_msg = f"Insufficient disk space. Need {source_size / (1024 ** 3):.2f} GB, available {available_space / (1024 ** 3):.2f} GB"
-                    self.logger.error(error_msg)
-                    messagebox.showerror("Disk Space Error", error_msg)
-                    return
+        self.progress_bar.setVisible(True)
+        self.progress_label.setVisible(True)
+        self.progress_bar.setValue(0)
 
-            except Exception as e:
-                self.logger.warning(f"Could not check disk space: {str(e)}")
+        # Start worker thread
+        self.copy_worker = CopyWorker(self.source_path, self.destination_path, self.logger)
+        self.copy_worker.progress_updated.connect(self.update_progress)
+        self.copy_worker.copy_finished.connect(self.copy_finished)
+        self.copy_worker.log_message.connect(self.append_log)
+        self.copy_worker.start()
 
-            # Disable copy button during operation
-            self.copy_btn.config(state='disabled', text='Copying...')
-            self.root.update()
+        self.logger.info(f"Copy operation started: {self.source_path} → {self.destination_path}")
 
-            # Perform the smart copy
-            self.smart_folder_copy(self.source_path, self.destination_path)
+    def cancel_copy(self):
+        """Cancel the current copy operation"""
+        if self.copy_worker and self.copy_worker.isRunning():
+            self.copy_worker.cancel()
+            self.copy_worker.wait()
+            self.logger.info("Copy operation cancelled by user")
+            self.reset_copy_ui()
 
-            success_msg = "Folder copied successfully!"
-            self.logger.info(f"Copy operation completed successfully: {self.source_path} -> {self.destination_path}")
-            messagebox.showinfo("Success", success_msg)
+    def update_progress(self, value, text):
+        """Update progress bar and text"""
+        self.progress_bar.setValue(value)
+        self.progress_label.setText(text)
 
-            # Auto-close if enabled
+    def copy_finished(self, success, message):
+        """Handle copy operation completion"""
+        self.reset_copy_ui()
+
+        if success:
+            QMessageBox.information(self, "Success", message)
+            self.logger.info("Copy operation completed successfully")
+
             if self.auto_close:
-                self.logger.info("Auto-closing application after successful copy")
-                self.root.quit()
+                self.logger.info("Auto-closing application")
+                self.close()
+        else:
+            QMessageBox.critical(self, "Copy Error", f"Copy operation failed:\n{message}")
+            self.logger.error(f"Copy operation failed: {message}")
 
-        except Exception as e:
-            error_msg = f"Failed to copy folder: {str(e)}"
-            self.logger.error(error_msg)
-            messagebox.showerror("Copy Error", error_msg)
-        finally:
-            # Re-enable copy button
-            try:
-                self.copy_btn.config(state='normal', text='Copy Folder')
-            except:
-                pass  # In case window is being destroyed
+    def reset_copy_ui(self):
+        """Reset copy-related UI elements"""
+        self.copy_btn.setEnabled(True)
+        self.copy_btn.setText("📁 Copy Folder")
+        self.copy_btn.clicked.disconnect()
+        self.copy_btn.clicked.connect(self.copy_folder)
 
-    def get_folder_size(self, folder_path):
-        """Calculate the total size of a folder"""
-        try:
-            total_size = 0
-            for dirpath, dirnames, filenames in os.walk(folder_path):
-                for filename in filenames:
-                    file_path = os.path.join(dirpath, filename)
-                    if os.path.exists(file_path):
-                        total_size += os.path.getsize(file_path)
-            return total_size
-        except Exception as e:
-            self.logger.warning(f"Could not calculate folder size: {str(e)}")
-            return 0
+        self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
 
     def open_settings(self):
-        """Open settings window"""
-        try:
-            if self.is_logged_in:
-                self.open_settings_window()
-            else:
-                self.show_password_dialog()
-        except Exception as e:
-            self.logger.error(f"Failed to open settings: {str(e)}")
-            messagebox.showerror("Settings Error", f"Failed to open settings: {str(e)}")
+        """Open settings dialog"""
+        if self.is_logged_in:
+            self.show_settings_dialog()
+        else:
+            self.show_password_dialog()
 
     def show_password_dialog(self):
-        """Show password entry dialog"""
-        try:
-            self.password_window = tk.Toplevel(self.root)
-            self.password_window.title("Authentication Required")
-            self.password_window.geometry("350x150")
-            self.password_window.configure(bg=self.colors['bg_primary'])
-            self.password_window.resizable(False, False)
-
-            # Center the window
-            self.password_window.transient(self.root)
-            self.password_window.grab_set()
-
-            main_frame = tk.Frame(self.password_window, bg=self.colors['bg_primary'])
-            main_frame.pack(expand=True, fill='both', padx=20, pady=20)
-
-            tk.Label(
-                main_frame,
-                text="Enter Password:",
-                font=("Segoe UI", 12, "bold"),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            ).pack(pady=(0, 10))
-
-            self.password_entry = tk.Entry(
-                main_frame,
-                show="*",
-                font=("Segoe UI", 11),
-                relief='flat',
-                bd=5
-            )
-            self.password_entry.pack(pady=(0, 15), ipady=5)
-            self.password_entry.focus()
-
-            button_frame = tk.Frame(main_frame, bg=self.colors['bg_primary'])
-            button_frame.pack()
-
-            tk.Button(
-                button_frame,
-                text="Cancel",
-                font=("Segoe UI", 10),
-                bg=self.colors['accent_red'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                padx=20,
-                pady=8,
-                command=self.password_window.destroy,
-                cursor="hand2"
-            ).pack(side='left', padx=(0, 10))
-
-            tk.Button(
-                button_frame,
-                text="Login",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['accent_green'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                padx=20,
-                pady=8,
-                command=self.check_password,
-                cursor="hand2"
-            ).pack(side='left')
-
-            # Bind Enter key to login
-            self.password_entry.bind('<Return>', lambda e: self.check_password())
-
-        except Exception as e:
-            self.logger.error(f"Failed to show password dialog: {str(e)}")
-            messagebox.showerror("Dialog Error", f"Failed to show password dialog: {str(e)}")
-
-    def check_password(self):
-        """Verify password"""
-        try:
-            if self.password_entry.get() == self.password:
+        """Show password authentication dialog"""
+        dialog = PasswordDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            password = dialog.get_password()
+            if password == self.password:
                 self.is_logged_in = True
-                self.password_window.destroy()
-                self.logout_btn.pack(side='left', padx=10)  # Show logout button
-                self.open_settings_window()
+                self.logout_btn.setVisible(True)
+                self.show_settings_dialog()
                 self.logger.info("User successfully authenticated")
             else:
+                QMessageBox.warning(self, "Authentication Error", "Incorrect password.")
                 self.logger.warning("Failed authentication attempt")
-                messagebox.showerror("Error", "Incorrect password.")
-                self.password_entry.delete(0, tk.END)
-        except Exception as e:
-            self.logger.error(f"Password check failed: {str(e)}")
-            messagebox.showerror("Authentication Error", f"Authentication failed: {str(e)}")
+
+    def show_settings_dialog(self):
+        """Show settings configuration dialog"""
+        dialog = SettingsDialog(self, self)
+        dialog.exec()
 
     def logout(self):
-        """Logout user"""
-        try:
-            self.is_logged_in = False
-            self.logout_btn.pack_forget()  # Hide logout button
-            self.logger.info("User logged out")
-        except Exception as e:
-            self.logger.error(f"Logout failed: {str(e)}")
+        """Logout current user"""
+        self.is_logged_in = False
+        self.logout_btn.setVisible(False)
+        self.logger.info("User logged out")
 
-    def open_settings_window(self):
-        """Open the main settings window with tabs"""
-        try:
-            self.settings_window = tk.Toplevel(self.root)
-            self.settings_window.title("Settings")
-            self.settings_window.geometry("500x400")
-            self.settings_window.configure(bg=self.colors['bg_primary'])
-            self.settings_window.resizable(False, False)
+    def closeEvent(self, event):
+        """Handle application close event"""
+        # Cancel any running operations
+        if self.copy_worker and self.copy_worker.isRunning():
+            self.copy_worker.cancel()
+            self.copy_worker.wait()
 
-            # Center window
-            self.settings_window.transient(self.root)
-            self.settings_window.grab_set()
+        if self.network_checker and self.network_checker.isRunning():
+            self.network_checker.wait()
 
-            # Create notebook for tabs
-            notebook = ttk.Notebook(self.settings_window)
-            notebook.pack(fill='both', expand=True, padx=20, pady=20)
+        self.logger.info("Application closed")
+        event.accept()
 
-            # Configure notebook style
-            style = ttk.Style()
-            style.configure('TNotebook.Tab', padding=[20, 10])
 
-            # Create tabs
-            self.create_folders_tab(notebook)
-            self.create_connection_tab(notebook)
-            self.create_security_tab(notebook)
-            self.create_preferences_tab(notebook)
+def main():
+    app = QApplication(sys.argv)
 
-            # Save button
-            save_frame = tk.Frame(self.settings_window, bg=self.colors['bg_primary'])
-            save_frame.pack(pady=(0, 20))
+    # Set application properties
+    app.setApplicationName("Folder Copier Pro")
+    app.setApplicationVersion("2.0")
+    app.setOrganizationName("Folder Copier Pro")
 
-            tk.Button(
-                save_frame,
-                text="Save Settings",
-                font=("Segoe UI", 12, "bold"),
-                bg=self.colors['accent_green'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                padx=30,
-                pady=10,
-                command=self.save_all_settings,
-                cursor="hand2"
-            ).pack()
+    # Create and show main window
+    window = FolderCopierApp()
+    window.show()
 
-        except Exception as e:
-            self.logger.error(f"Failed to open settings window: {str(e)}")
-            messagebox.showerror("Settings Error", f"Failed to open settings window: {str(e)}")
-
-    def create_folders_tab(self, notebook):
-        """Create the folders configuration tab"""
-        try:
-            frame = tk.Frame(notebook, bg=self.colors['bg_primary'])
-            notebook.add(frame, text="Folders")
-
-            # Source folder
-            source_frame = tk.LabelFrame(
-                frame,
-                text="Source Folder",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            )
-            source_frame.pack(fill='x', padx=20, pady=10)
-
-            self.source_path_var = tk.StringVar(value=self.source_path)
-            tk.Entry(
-                source_frame,
-                textvariable=self.source_path_var,
-                font=("Segoe UI", 9),
-                state='readonly'
-            ).pack(fill='x', padx=10, pady=5)
-
-            tk.Button(
-                source_frame,
-                text="Browse Source Folder",
-                font=("Segoe UI", 10),
-                bg=self.colors['accent_blue'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                command=self.browse_source,
-                cursor="hand2"
-            ).pack(pady=5)
-
-            # Destination folder
-            dest_frame = tk.LabelFrame(
-                frame,
-                text="Destination Folder",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            )
-            dest_frame.pack(fill='x', padx=20, pady=10)
-
-            self.dest_path_var = tk.StringVar(value=self.destination_path)
-            tk.Entry(
-                dest_frame,
-                textvariable=self.dest_path_var,
-                font=("Segoe UI", 9),
-                state='readonly'
-            ).pack(fill='x', padx=10, pady=5)
-
-            tk.Button(
-                dest_frame,
-                text="Browse Destination Folder",
-                font=("Segoe UI", 10),
-                bg=self.colors['accent_blue'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                command=self.browse_destination,
-                cursor="hand2"
-            ).pack(pady=5)
-
-        except Exception as e:
-            self.logger.error(f"Failed to create folders tab: {str(e)}")
-
-    def create_connection_tab(self, notebook):
-        """Create the connection configuration tab"""
-        try:
-            frame = tk.Frame(notebook, bg=self.colors['bg_primary'])
-            notebook.add(frame, text="Connection")
-
-            # Folder type selection
-            type_frame = tk.LabelFrame(
-                frame,
-                text="Folder Type",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            )
-            type_frame.pack(fill='x', padx=20, pady=10)
-
-            self.folder_type_var = tk.StringVar(value=self.folder_type)
-
-            tk.Radiobutton(
-                type_frame,
-                text="Local Folder",
-                variable=self.folder_type_var,
-                value="local",
-                font=("Segoe UI", 10),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            ).pack(anchor='w', padx=10, pady=5)
-
-            tk.Radiobutton(
-                type_frame,
-                text="Network Folder",
-                variable=self.folder_type_var,
-                value="network",
-                font=("Segoe UI", 10),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            ).pack(anchor='w', padx=10, pady=5)
-
-            # Network settings
-            network_frame = tk.LabelFrame(
-                frame,
-                text="Network Settings",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            )
-            network_frame.pack(fill='x', padx=20, pady=10)
-
-            tk.Label(
-                network_frame,
-                text="Network IP Address:",
-                font=("Segoe UI", 10),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            ).pack(anchor='w', padx=10, pady=(10, 5))
-
-            self.network_ip_var = tk.StringVar(value=self.network_ip)
-            tk.Entry(
-                network_frame,
-                textvariable=self.network_ip_var,
-                font=("Segoe UI", 10)
-            ).pack(fill='x', padx=10, pady=(0, 10))
-
-        except Exception as e:
-            self.logger.error(f"Failed to create connection tab: {str(e)}")
-
-    def create_security_tab(self, notebook):
-        """Create the security configuration tab"""
-        try:
-            frame = tk.Frame(notebook, bg=self.colors['bg_primary'])
-            notebook.add(frame, text="Security")
-
-            password_frame = tk.LabelFrame(
-                frame,
-                text="Change Password",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            )
-            password_frame.pack(fill='x', padx=20, pady=20)
-
-            tk.Label(
-                password_frame,
-                text="Current Password:",
-                font=("Segoe UI", 10),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            ).pack(anchor='w', padx=10, pady=(10, 5))
-
-            self.current_password_var = tk.StringVar()
-            tk.Entry(
-                password_frame,
-                textvariable=self.current_password_var,
-                show="*",
-                font=("Segoe UI", 10)
-            ).pack(fill='x', padx=10, pady=(0, 10))
-
-            tk.Label(
-                password_frame,
-                text="New Password:",
-                font=("Segoe UI", 10),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            ).pack(anchor='w', padx=10, pady=(0, 5))
-
-            self.new_password_var = tk.StringVar()
-            tk.Entry(
-                password_frame,
-                textvariable=self.new_password_var,
-                show="*",
-                font=("Segoe UI", 10)
-            ).pack(fill='x', padx=10, pady=(0, 10))
-
-            tk.Button(
-                password_frame,
-                text="Change Password",
-                font=("Segoe UI", 10),
-                bg=self.colors['accent_purple'],
-                fg=self.colors['text_primary'],
-                relief='flat',
-                command=self.change_password,
-                cursor="hand2"
-            ).pack(pady=10)
-
-        except Exception as e:
-            self.logger.error(f"Failed to create security tab: {str(e)}")
-
-    def create_preferences_tab(self, notebook):
-        """Create the preferences tab"""
-        try:
-            frame = tk.Frame(notebook, bg=self.colors['bg_primary'])
-            notebook.add(frame, text="Preferences")
-
-            pref_frame = tk.LabelFrame(
-                frame,
-                text="Application Preferences",
-                font=("Segoe UI", 10, "bold"),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            )
-            pref_frame.pack(fill='x', padx=20, pady=20)
-
-            self.auto_close_var = tk.BooleanVar(value=self.auto_close)
-            tk.Checkbutton(
-                pref_frame,
-                text="Auto-close application after successful copy",
-                variable=self.auto_close_var,
-                font=("Segoe UI", 10),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']
-            ).pack(anchor='w', padx=10, pady=10)
-
-        except Exception as e:
-            self.logger.error(f"Failed to create preferences tab: {str(e)}")
-
-    def browse_source(self):
-        """Browse for source folder"""
-        try:
-            folder = filedialog.askdirectory(title="Select Source Folder")
-            if folder:
-                self.source_path = folder
-                self.source_path_var.set(folder)
-                self.logger.info(f"Source folder selected: {folder}")
-        except Exception as e:
-            self.logger.error(f"Failed to browse source folder: {str(e)}")
-            messagebox.showerror("Browse Error", f"Failed to browse source folder: {str(e)}")
-
-    def browse_destination(self):
-        """Browse for destination folder"""
-        try:
-            folder = filedialog.askdirectory(title="Select Destination Folder")
-            if folder:
-                self.destination_path = folder
-                self.dest_path_var.set(folder)
-                self.logger.info(f"Destination folder selected: {folder}")
-        except Exception as e:
-            self.logger.error(f"Failed to browse destination folder: {str(e)}")
-            messagebox.showerror("Browse Error", f"Failed to browse destination folder: {str(e)}")
-
-    def change_password(self):
-        """Change the password"""
-        try:
-            if self.current_password_var.get() != self.password:
-                self.logger.warning("Incorrect current password entered during password change")
-                messagebox.showerror("Error", "Current password is incorrect.")
-                return
-
-            new_password = self.new_password_var.get()
-            if len(new_password) < 3:
-                messagebox.showerror("Error", "New password must be at least 3 characters long.")
-                return
-
-            self.password = new_password
-            self.current_password_var.set("")
-            self.new_password_var.set("")
-            self.logger.info("Password changed successfully")
-            messagebox.showinfo("Success", "Password changed successfully!")
-
-        except Exception as e:
-            self.logger.error(f"Failed to change password: {str(e)}")
-            messagebox.showerror("Password Error", f"Failed to change password: {str(e)}")
-
-    def save_all_settings(self):
-        """Save all settings from tabs"""
-        try:
-            # Update variables from form
-            self.source_path = self.source_path_var.get()
-            self.destination_path = self.dest_path_var.get()
-            self.folder_type = self.folder_type_var.get()
-            self.network_ip = self.network_ip_var.get()
-            self.auto_close = self.auto_close_var.get()
-
-            if self.save_settings():
-                messagebox.showinfo("Success", "Settings saved successfully!")
-                self.settings_window.destroy()
-
-                # Update main display
-                self.update_display()
-                self.logger.info("All settings saved and display updated")
-            else:
-                self.logger.error("Failed to save settings")
-
-        except Exception as e:
-            self.logger.error(f"Failed to save all settings: {str(e)}")
-            messagebox.showerror("Save Error", f"Failed to save settings: {str(e)}")
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    try:
-        root = tk.Tk()
-        app = FolderCopierApp(root)
-        root.mainloop()
-    except Exception as e:
-        # Log any critical startup errors
-        print(f"Critical error starting application: {str(e)}")
-        messagebox.showerror("Startup Error", f"Failed to start application: {str(e)}")
+    main()

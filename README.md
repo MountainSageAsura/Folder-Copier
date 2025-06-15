@@ -9,10 +9,19 @@ A modern, user-friendly GUI application for copying folders between local and ne
 ## Features
 
 ### 🎨 Modern Interface
-- Beautiful pastel color palette
-- Clean, intuitive design
-- Responsive layout with proper spacing
-- Professional typography using Segoe UI
+- **Beautiful PyQt6 GUI** with native look and feel
+- **Emoji-enhanced interface** for better visual recognition
+- Beautiful pastel color palette with modern styling
+- Clean, intuitive design with proper spacing
+- Professional typography and responsive layout
+- **Real-time progress tracking** with detailed status updates
+
+### 📊 Live Monitoring & Progress
+- **Real-time progress bar** showing copy completion percentage
+- **Live log updates** during copy operations
+- **Detailed status messages** for each file being copied
+- **Background operations** with non-blocking UI
+- **Copy cancellation** support for user control
 
 ### 📁 Smart Folder Management
 - Easy source and destination folder selection
@@ -61,10 +70,16 @@ A modern, user-friendly GUI application for copying folders between local and ne
 ## Installation
 
 ### Prerequisites
-- Python 3.6 or higher
-- tkinter (usually included with Python)
+- Python 3.8 or higher
+- PyQt6 (modern GUI framework)
 - Standard library modules: `os`, `shutil`, `subprocess`, `platform`, `threading`, `json`, `logging`
-- No additional packages required - uses only Python standard library
+
+### Installation
+
+Install PyQt6 using pip:
+```bash
+pip install PyQt6
+```
 
 ### Quick Start
 
@@ -87,12 +102,14 @@ A modern, user-friendly GUI application for copying folders between local and ne
 
 ### Building Executable (Optional)
 
-To create a standalone executable:
+To create a standalone executable with PyQt6:
 
 ```bash
 pip install pyinstaller
-pyinstaller --onefile --windowed --icon=icon.ico main.py
+pyinstaller --onefile --windowed --name "FolderCopierPro" main.py
 ```
+
+**Note**: PyQt6 will be automatically bundled with the executable, making it larger but self-contained.
 
 ## Usage
 
@@ -165,20 +182,41 @@ The application stores settings in `settings.json` with the following format:
 ### Technical Details
 
 ### Architecture
-- **GUI Framework**: tkinter with ttk for modern widgets
-- **Threading**: Network operations run in background threads
+- **GUI Framework**: PyQt6 for modern, native interface
+- **Multi-threading**: Background operations for copy and network checking
 - **Cross-platform**: Works on Windows, macOS, and Linux
-- **File Operations**: Uses Python's `shutil` for reliable folder copying
-- **Logging**: Comprehensive logging system with daily log files
-- **Error Handling**: Multi-layer error handling with user-friendly messages
+- **File Operations**: Python's `shutil` with progress tracking
+- **Real-time Updates**: Signal/slot system for live UI updates
+- **Logging**: Comprehensive logging with GUI integration
+- **Error Handling**: Multi-layer error handling with user feedback
 
-### Smart Copy Algorithm
-The application uses an intelligent copying system:
-1. **Check if destination folder exists**
-2. **If exists and `_old` version exists**: Delete `_old` version
-3. **Rename existing folder** to `[name]_old`
-4. **Copy source folder** to destination
-5. **On failure**: Automatically restore original folder from `_old` backup
+### Modern UI Features
+- **Emoji Integration**: Visual recognition with contextual emojis
+  - 📁 Main window and folder operations
+  - 🔒 Authentication and security
+  - ⚙️ Settings and configuration
+  - 🌐 Network connectivity
+  - 📊 Progress and monitoring
+- **Live Log Display**: Real-time operation monitoring
+- **Progress Visualization**: Detailed progress bars and status text
+- **Responsive Design**: Proper scaling and modern layouts
+
+### Enhanced Copy Process
+The application provides detailed monitoring during copy operations:
+1. **Pre-copy Analysis**: Calculates total files and required space
+2. **Progress Tracking**: Real-time progress bar (0-100%)
+3. **Live Logging**: Each file copy logged with timestamp
+4. **Status Updates**: Detailed current operation display
+5. **Cancellation Support**: User can cancel mid-operation
+6. **Error Recovery**: Automatic rollback on failure
+
+### Copy Progress Stages
+- **5%**: Analyzing source folder
+- **10%**: Preparing destination
+- **15%**: Removing old backup (if needed)
+- **20%**: Creating backup of existing folder
+- **25-95%**: File-by-file copying with live updates
+- **100%**: Copy completed successfully
 
 ### Logging System
 - **Daily log files** stored in `logs/` directory
@@ -212,8 +250,9 @@ The application creates detailed logs in the `logs/` directory. Check the most r
 - **Check logs**: Look for network timeout or ping errors
 
 **Problem**: Application won't start
-- **Solution**: Ensure Python 3.6+ is installed and tkinter is available
+- **Solution**: Ensure Python 3.8+ is installed and PyQt6 is available (`pip install PyQt6`)
 - **Check logs**: Look for initialization errors in the log file
+- **PyQt6 Issues**: Verify PyQt6 installation with `python -c "from PyQt6.QtWidgets import QApplication"`
 
 **Problem**: Copy operation fails
 - **Solution**: Check folder permissions, available disk space, and source folder existence
@@ -265,18 +304,21 @@ We welcome contributions! Please follow these steps:
 
 ## Future Enhancements
 
-- [ ] Encrypted password storage
-- [ ] Progress bar for large copy operations with speed indicators
-- [ ] Multiple folder selection with batch operations
-- [ ] Copy scheduling and automation features
-- [ ] **Enhanced logging**: Export logs, log viewer interface
-- [ ] **Backup management**: Manage and restore `_old` folder versions
-- [ ] Theme customization options with multiple color schemes
-- [ ] **Recovery tools**: Advanced backup restoration utilities
-- [ ] Integration with cloud storage services
-- [ ] **Performance optimization**: Parallel copying for large folders
-- [ ] **Network improvements**: Better connection testing and retry logic
-- [ ] Configuration export/import for easy setup migration
+- [ ] **Advanced Progress Visualization**: File transfer speed, ETA, and bandwidth usage
+- [ ] **Enhanced Live Monitoring**: Copy statistics, error counts, and performance metrics
+- [ ] Encrypted password storage with secure key management
+- [ ] Multiple folder selection with batch operations and queuing
+- [ ] Copy scheduling and automation features with cron-like functionality
+- [ ] **PyQt6 Advanced Features**: Drag-and-drop interface, system tray integration
+- [ ] **Enhanced logging**: Export logs, log viewer interface with filtering
+- [ ] **Backup management**: Visual management of `_old` folder versions
+- [ ] Theme customization with multiple color schemes and dark mode
+- [ ] **Recovery tools**: Advanced backup restoration with preview
+- [ ] Integration with cloud storage services (Google Drive, OneDrive, Dropbox)
+- [ ] **Performance optimization**: Parallel copying, compression options
+- [ ] **Network improvements**: VPN support, advanced connection testing
+- [ ] Configuration export/import with profile management
+- [ ] **GUI Enhancements**: Animated transitions, modern icons, custom widgets
 
 ## License
 
